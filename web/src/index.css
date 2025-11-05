@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.scrollbar-hidden {
+    scrollbar-width: none; /* Firefox */
+  }
+  
+  .scrollbar-hidden::-webkit-scrollbar {
+    display: none; /* Chrome, Safari */
+  }
+
+html {
+  overflow-y: scroll;
+}
+
+/* Optionnel : styles personnalisés */
+body.dark {
+  @apply bg-gray-800 text-gray-100;
+}
+
+@keyframes spin-slow {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 2.5s linear infinite;
+}
+
+@font-face {
+  font-family: 'Anime Ace';
+  src: url('./assets/fonts/animeace.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); opacity: 0.8; }
+  50% { transform: translateY(-20px); opacity: 1; }
+}
+
+@keyframes float-delayed {
+  0%, 100% { transform: translateY(0); opacity: 0.8; }
+  50% { transform: translateY(20px); opacity: 1; }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: float-delayed 5s ease-in-out infinite;
+}
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 15px rgba(99, 102, 241, 0.5); }
+  50% { box-shadow: 0 0 30px rgba(236, 72, 153, 0.6); }
+}
+
+.group:hover {
+  animation: glow 1.5s ease-in-out infinite alternate;
+}

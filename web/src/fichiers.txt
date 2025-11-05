@@ -1,0 +1,3395 @@
+=== ./App.jsx ===
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Login from './pages/Login';
+import DashboardLayout from './components/DashboardLayout';
+import HomeUser from './pages/HomeUser';
+import AccountSettings from './components/AccountSettings';
+import Dashboard from './pages/Dashboard';
+import Patients from './pages/Patients';
+import Medecins from './pages/Medecins';
+import Cabinets from './pages/Cabinets';
+import { Toaster } from 'react-hot-toast';
+import { UserProvider } from './contexts/UserContext';
+import RendezVous from './pages/RendezVous';
+
+const Records = () => <h1>Dossiers médicaux</h1>;
+const NotFound = () => <h1>404 - Page non trouvée</h1>;
+
+const App = () => (
+  <UserProvider>
+    <Toaster position="bottom-left" reverseOrder={false} />
+    <Router>
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/admin" element={<DashboardLayout />}>
+          <Route path="home" element={<HomeUser />} />
+          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="patients" element={<Patients />} />
+          <Route path="medecin" element={<Medecins />} />
+          <Route path="appointments" element={<RendezVous />} />
+          <Route path="cabinets" element={<Cabinets />} />
+          <Route path="account" element={<AccountSettings />} />
+          <Route path="records" element={<Records />} />
+        </Route>
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Router>
+  </UserProvider>
+);
+
+export default App;
+
+=== ./components/AccountSettings.jsx ===
+import { useState } from "react";
+
+const AccountSettings = () => {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    setMessage("");
+    setError("");
+
+    if (newPassword !== confirmPassword) {
+      setError("Les nouveaux mots de passe ne correspondent pas.");
+      return;
+    }
+
+    try {
+      const response = await fetch("http://localhost:8000/api/change-password", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.message || "Erreur lors du changement de mot de passe.");
+      } else {
+        setMessage("Mot de passe changé avec succès !");
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      }
+    } catch (err) {
+      setError("Erreur réseau ou serveur.");
+    }
+  };
+
+  return (
+    <div className="p-6 max-w-md mx-auto bg-white rounded shadow">
+      <h2 className="text-xl font-semibold mb-4 text-green-600">Changer le mot de passe</h2>
+      <form onSubmit={handlePasswordChange} className="space-y-4">
+        <div>
+          <label className="block font-medium text-gray-700 mb-1">Mot de passe actuel</label>
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            required
+            className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+          />
+        </div>
+        <div>
+          <label className="block font-medium text-gray-700 mb-1">Nouveau mot de passe</label>
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            required
+            className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+          />
+        </div>
+        <div>
+          <label className="block font-medium text-gray-700 mb-1">Confirmer le mot de passe</label>
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            className="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+          />
+        </div>
+
+        {error && <p className="text-red-500">{error}</p>}
+        {message && <p className="text-green-600">{message}</p>}
+
+        <button
+          type="submit"
+          className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-500"
+        >
+          Enregistrer
+        </button>
+      </form>
+    </div>
+  );
+};
+
+export default AccountSettings;
+=== ./components/Button.jsx ===
+import React, { Children } from 'react';
+import { colors } from '@/theme';
+
+const Button = ({ onClick, children}) => {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-4 py-2  text-white rounded focus:outline-none ${colors.primary.button} focus:outline-none focus:ring-2`}
+    >
+      {children}
+    </button>
+  );
+};
+
+export default Button;
+=== ./components/buttonPrimary.jsx ===
+=== ./components/CabinetForm.jsx ===
+import React, { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import {
+  fetchCabinets,
+  createCabinet,
+  updateCabinet
+} from '@/controllers/cabinetsController';
+
+const fields = [
+  { name: 'nom', label: 'Nom du cabinet', type: 'text', placeholder: 'Entrez le nom' },
+  { name: 'lieu', label: 'Lieu', type: 'text', placeholder: 'Entrez le lieu' },
+];
+
+export default function CabinetForm({ cabinetId, onSuccess, onClose }) {
+  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm();
+  const [mode, setMode] = useState('create');
+
+  useEffect(() => {
+    if (cabinetId) {
+      setMode('edit');
+      fetchCabinets().then(list => {
+        const data = list.find(c => c.id === cabinetId);
+        if (data) reset(data);
+      });
+    } else {
+      setMode('create');
+      reset({});
+    }
+  }, [cabinetId, reset]);
+
+  const onSubmit = async data => {
+    try {
+      if (mode === 'create') await createCabinet(data);
+      else await updateCabinet(cabinetId, data);
+      onSuccess();
+    } catch (err) {
+      alert(err.message || 'Erreur lors de la soumission');
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      {fields.map(f => (
+        <div key={f.name}>
+          <label htmlFor={f.name} className="block text-sm font-medium text-gray-700">
+            {f.label}
+          </label>
+          <input
+            id={f.name}
+            {...register(f.name, { required: `${f.label} requis` })}
+            type={f.type}
+            placeholder={f.placeholder}
+            className="mt-1 block w-full border border-gray-300 rounded-md p-2"
+          />
+          {errors[f.name] && (
+            <p className="mt-1 text-red-500 text-sm">{errors[f.name].message}</p>
+          )}
+        </div>
+      ))}
+      <div className="flex justify-end space-x-2">
+        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded">
+          Annuler
+        </button>
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="px-4 py-2 bg-emerald-600 text-white rounded"
+        >
+          {mode === 'create' ? 'Ajouter' : 'Modifier'}
+        </button>
+      </div>
+    </form>
+  );
+}
+=== ./components/DashboardLayout.jsx ===
+import React, { useState } from 'react';
+import { Outlet, Navigate, useLocation } from 'react-router-dom';
+import Sidebar from './Sidebar';
+import Header from './Header';
+
+const routeTitles = {
+  '/admin/home': 'Accueil',
+  '/admin/dashboard': 'Dashboard',
+  '/admin/patients': 'Patients',
+  '/admin/medecin': 'Médecins',
+  '/admin/appointments': 'Rendez‑vous',
+  '/admin/account': 'Mon compte',
+  '/admin/cabinet': 'Cabinets'
+};
+
+const DashboardLayout = () => {
+  const user = {
+    name: 'Fanasina Randria',
+    email: 'fan@gmail.com',
+    avatarUrl: 'http://localhost:8000/fa.jpg'
+  };
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const location = useLocation();
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    window.location.href = '/login';
+  };
+
+  if (!user) return <Navigate to="/login" replace />;
+
+  const headerTitle = routeTitles[location.pathname] || '';
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      <Sidebar isOpen={isSidebarOpen} onToggle={() => setSidebarOpen(prev => !prev)} />
+
+      <div className={`flex flex-col flex-1 bg-gray-100 transition-margin duration-300 ${
+          isSidebarOpen ? 'md:ml-64' : 'md:ml-16'
+        }`}>
+        <Header
+          title={headerTitle}
+          user={user}
+          onLogout={handleLogout}
+          onToggleSidebar={() => setSidebarOpen(prev => !prev)}
+        />
+        <main className="p-6 flex-1 overflow-auto">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  );
+};
+
+export default DashboardLayout;
+=== ./components/Header.jsx ===
+import React, { useState, useRef, useEffect } from 'react';
+import { Search, Settings, LogOut, Menu, Pencil } from 'lucide-react';
+import { NavLink } from 'react-router-dom';
+import { useUser } from '../contexts/UserContext';
+
+const Header = ({ title, onLogout, onToggleSidebar, onEditAvatar }) => {
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const { user } = useUser();
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  if (!user) return null;
+
+  const avatarUrl = user.picture?.trim() !== './user/profil/random-user.png' ? user.picture : null;
+  const initial = user.pseudo ? user.pseudo[0].toUpperCase() : '?';
+
+  return (
+    <header className="flex items-center justify-between bg-white p-4 shadow">
+      <button className="focus:outline-none md:hidden" onClick={onToggleSidebar}>
+        <Menu className="w-6 h-6 text-gray-600" />
+      </button>
+
+      <h2 className="text-xl font-semibold text-gray-700 ml-2">{title}</h2>
+
+      <div className="flex items-center space-x-4">
+
+
+        {/* Avatar Dropdown */}
+        <div className="relative" ref={dropdownRef}>
+          <button onClick={() => setOpen(prev => !prev)} className="focus:outline-none">
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt="Avatar"
+                className="w-10 h-10 rounded-full border-2 border-green-500 object-cover hover:opacity-90 transition-opacity"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-green-500 text-white flex items-center justify-center font-bold text-lg">
+                {initial}
+              </div>
+            )}
+          </button>
+
+          {open && (
+            <div className="absolute right-0 mt-3 w-80 bg-white rounded-xl shadow-xl z-50 p-5 space-y-4">
+              <div className="flex flex-col items-center">
+                <div className="relative w-24 h-24">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt="Avatar"
+                      className="w-full h-full rounded-full border-2 border-green-400 object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full rounded-full bg-green-400 text-white flex items-center justify-center text-3xl font-semibold">
+                      {initial}
+                    </div>
+                  )}
+                  <button
+                    onClick={onEditAvatar}
+                    className="absolute bottom-0 right-0 bg-white p-1.5 rounded-full border shadow hover:bg-gray-100 transition"
+                    title="Modifier l'image"
+                  >
+                    <Pencil className="w-4 h-4 text-gray-600" />
+                  </button>
+                </div>
+                <div className="mt-2 text-center">
+                  <p className="text-lg font-semibold text-gray-700">{user.pseudo}</p>
+                  <p className="text-sm text-gray-500">{user.email}</p>
+                </div>
+              </div>
+
+              <div className="border-t pt-4 space-y-2">
+                <NavLink
+                  to="/dashboard/account"
+                  className="flex items-center px-4 py-2 rounded-md hover:bg-gray-100 transition"
+                  onClick={() => setOpen(false)}
+                >
+                  <Settings className="w-4 h-4 mr-2 text-gray-600" /> Mon compte
+                </NavLink>
+
+                <button
+                  onClick={onLogout}
+                  className="w-full flex items-center px-4 py-2 rounded-md text-red-600 hover:bg-red-50 transition"
+                >
+                  <LogOut className="w-4 h-4 mr-2" /> Déconnexion
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+};
+
+export default Header;
+
+=== ./components/MedecinForm.jsx ===
+import React, { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { createMedecin, updateMedecin, getMedecinById } from '@/controllers/medecinsController';
+import { colors } from '../theme';
+import MultiStepForm from './MultiStepForm';
+import { showToast } from '../utils/alerts';
+
+const stepFields = [
+  [
+    { name: 'matricule', label: 'N°Matricule', type: 'text', placeholder: 'Entrez le matricule' },
+    { name: 'nom', label: 'Nom', type: 'text', placeholder: 'Entrez le nom' },
+    {
+      name: 'email',
+      label: 'Email',
+      type: 'email',
+      placeholder: 'Entrez l’email',
+      validation: {
+        required: 'Email requis',
+        pattern: {
+          value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+          message: 'Format d’email invalide',
+        },
+      },
+    },
+  ],
+  [
+    {
+      name: 'telephone',
+      label: 'Téléphone',
+      type: 'tel',
+      placeholder: 'Entrez le numéro',
+      validation: {
+        required: 'Téléphone requis',
+        pattern: {
+          value: /^(\+?\d{1,4}[-.\s]?)?(\(?\d{2,4}\)?[-.\s]?)?[\d\-.\s]{6,10}$/,
+          message: 'Numéro de téléphone invalide',
+        },
+      },
+    },
+    {
+      name: 'cin',
+      label: 'CIN',
+      type: 'text',
+      placeholder: 'Entrez le CIN',
+      validation: {
+        required: 'CIN requis',
+        validate: value =>
+          /^\d{12}$/.test(value.replace(/\s/g, '')) || 'Le CIN doit contenir 12 chiffres',
+      },
+    },
+    { name: 'type', label: 'Type', type: 'text', placeholder: 'Entrez le type' },
+  ],
+];
+
+export default function MedecinForm({ medecinId, onSuccess, onClose }) {
+  const {
+    register,
+    handleSubmit,
+    reset,
+    trigger,
+    setValue,
+    watch,
+    setError,
+    clearErrors,
+    formState: { errors, isSubmitting, isValid },
+  } = useForm({
+    mode: 'onChange',
+    reValidateMode: 'onChange',
+    shouldFocusError: true,
+  });
+
+  const [step, setStep] = useState(1);
+  const [mode, setMode] = useState('create');
+
+  useEffect(() => {
+    const loadMedecin = async () => {
+      if (medecinId) {
+        setMode('edit');
+        const data = await getMedecinById(medecinId);
+        if (data) reset(data);
+      } else {
+        setMode('create');
+        reset({});
+      }
+    };
+    loadMedecin();
+  }, [medecinId, reset]);
+
+  const watchCIN = watch('cin', '');
+  useEffect(() => {
+    const formatted = watchCIN.replace(/\D/g, '').slice(0, 12);
+    setValue('cin', formatted);
+  }, [watchCIN, setValue]);
+
+  const steps = stepFields.map(fields => ({
+    content: (
+      <div className="space-y-4">
+        {fields.map(field => {
+          const fieldError = errors[field.name];
+
+          return (
+            <div key={field.name}>
+              <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">
+                {field.label}
+              </label>
+              <input
+                id={field.name}
+                type={field.type}
+                placeholder={field.placeholder}
+                {...register(field.name, field.validation || { required: `${field.label} requis` })}
+                className={`mt-1 block w-full border rounded-md p-2 ${
+                  fieldError ? 'border-red-500' : 'border-gray-300'
+                }`}
+                value={
+                  field.name === 'cin'
+                    ? watchCIN.replace(/\D/g, '').slice(0, 12).replace(/(.{3})/g, '$1 ').trim()
+                    : watch(field.name) || ''
+                }
+                onChange={e => {
+                  const value = e.target.value;
+                  if (field.name === 'cin') {
+                    const raw = value.replace(/\D/g, '').slice(0, 12);
+                    setValue('cin', raw, { shouldTouch: true, shouldValidate: true });
+                  } else {
+                    setValue(field.name, value, { shouldTouch: true, shouldValidate: true });
+                  }
+                }}
+              />
+              {fieldError && (
+                <p className="mt-1 text-red-500 text-sm">{fieldError.message}</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    ),
+  }));
+
+  const next = async () => {
+    const currentStepFields = stepFields[step - 1].map(f => f.name);
+    const valid = await trigger(currentStepFields);
+    if (valid && step < steps.length) {
+      setStep(s => s + 1);
+    }
+  };
+
+  const prev = () => setStep(s => Math.max(s - 1, 1));
+  const handlePrev = type => (type === 'cancel' ? onClose() : prev());
+
+  const handleFinalSubmit = async () => {
+    const currentStepFields = stepFields[step - 1].map(f => f.name);
+    const valid = await trigger(currentStepFields);
+    if (!valid) return;
+
+    const values = watch();
+
+    try {
+      if (mode === 'create') {
+        await createMedecin(values);
+      } else {
+        await updateMedecin(medecinId, values);
+      }
+      onSuccess();
+      showToast(`Médecin ${values?.matricule} ajouté avec sucèes`)
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const isNextDisabled = () => {
+    const currentFields = stepFields[step - 1].map(f => f.name);
+    const values = watch(); // récupère tous les champs
+  
+    // Vérifie si un champ de cette étape est vide ou a une erreur
+    return currentFields.some(field => {
+      const hasError = errors[field];
+      const isEmpty = !values[field] || values[field].toString().trim() === '';
+      return hasError || isEmpty;
+    });
+  };
+  
+
+  return (
+    <div className="space-y-6">
+      <MultiStepForm
+        steps={steps}
+        step={step}
+        setStep={setStep}
+        onNext={next}
+        onPrev={handlePrev}
+        onSubmit={handleFinalSubmit}
+        isNextDisabled={isNextDisabled}
+        isSubmitting={isSubmitting}
+        submitLabel={mode === 'create' ? 'Ajouter' : 'Modifier'}
+        colorClass={colors.primary.button}
+      />
+    </div>
+  );
+}
+=== ./components/ModalAnime.jsx ===
+import { Dialog, Transition } from '@headlessui/react';
+import { Fragment, useEffect, useState } from 'react';
+import { X, HelpCircle } from 'lucide-react';
+
+export default function ModalAnime({ isOpen, onClose, title, children, tutorial }) {
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
+
+  useEffect(() => {
+    document.body.style.overflow = isOpen || isHelpOpen ? 'hidden' : '';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen, isHelpOpen]);
+
+const defaultTutorial = (
+  <div>
+    <h3 className="font-semibold text-xl mb-4 text-gray-500">Guide de remplissage du formulaire</h3>
+    <ol className="pl-6 space-y-2 text-gray-700">
+      <li>
+        <span className="font-semibold text-emerald-500">Étape 1 :</span> Commencez par renseigner tous les champs obligatoires .
+      </li>
+      <li>
+        <span className="font-semibold text-emerald-500">Étape 2 :</span> Relisez soigneusement vos informations pour éviter toute erreur.
+      </li>
+      <li>
+        <span className="font-semibold text-emerald-500">Étape 3 :</span> En cas de doute, cliquez sur l’icône <HelpCircle className="inline w-4 h-4 text-emerald-500" /> en haut à droite pour accéder à cette aide.
+      </li>
+      <li>
+        <span className="font-semibold text-emerald-500">Étape 4 :</span> Une fois prêt, cliquez sur <span className="font-semibold">« Soumettre »</span> pour envoyer votre formulaire.
+      </li>
+    </ol>
+  </div>
+);
+
+
+  return (
+    <>
+      {/* Modal principal */}
+      <Transition appear show={isOpen} as={Fragment}>
+        <Dialog
+          as="div"
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          onClose={onClose}
+        >
+          {/* Fond */}
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-200"
+            enterFrom="opacity-0 backdrop-blur-none"
+            enterTo="opacity-100 backdrop-blur-[3px]"
+            leave="ease-in duration-150"
+            leaveFrom="opacity-100 backdrop-blur-[3px]"
+            leaveTo="opacity-0 backdrop-blur-none"
+          >
+            <div className="fixed inset-0 bg-black/30 backdrop-blur-[3px]" aria-hidden="true" />
+          </Transition.Child>
+
+          {/* Contenu */}
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-200"
+            enterFrom="opacity-0 scale-95"
+            enterTo="opacity-100 scale-100"
+            leave="ease-in duration-150"
+            leaveFrom="opacity-100 scale-100"
+            leaveTo="opacity-0 scale-95"
+          >
+            <Dialog.Panel className="bg-white p-6 rounded-xl shadow w-[500px] max-h-[80vh] overflow-y-auto z-50 relative">
+              <button
+                onClick={onClose}
+                className="absolute top-6 right-6 text-gray-600 hover:text-red-500 text-2xl"
+                aria-label="Fermer"
+              >
+                <X />
+              </button>
+              <button
+                onClick={() => setIsHelpOpen(true)}
+                className="absolute text-blue-400 top-6 right-16 hover:text-blue-300 text-2xl"
+                aria-label="Aide"
+              >
+                <HelpCircle />
+              </button>
+
+              <Dialog.Title className="text-2xl text-gray-600 font-bold mb-4">
+                {title}
+              </Dialog.Title>
+              {children}
+            </Dialog.Panel>
+          </Transition.Child>
+        </Dialog>
+      </Transition>
+
+      {/* Modal d'Aide */}
+      <Transition appear show={isHelpOpen} as={Fragment}>
+        <Dialog
+          as="div"
+          className="fixed inset-0 z-60 flex items-center justify-center"
+          onClose={() => setIsHelpOpen(false)}
+        >
+          {/* Fond */}
+          <Transition.Child as={Fragment}>
+            <div className="fixed inset-0 bg-black/20" aria-hidden="true" />
+          </Transition.Child>
+
+          {/* Animation scale depuis le haut */}
+          <Transition.Child
+            as={Fragment}
+            enter="transition ease-out duration-200"
+            enterFrom="opacity-0 scale-25 -translate-y-46 translate-x-16"
+            enterTo="opacity-100 scale-100 translate-y-0 translate-x-0"
+            leave="transition ease-in duration-150"
+            leaveFrom="opacity-100 scale-100 translate-y-0 translate-x-0"
+            leaveTo="opacity-0 scale-25 -translate-y-46 translate-x-26"
+          >
+            <Dialog.Panel className="bg-white p-8 rounded-xl shadow w-[600px] max-h-[80vh] overflow-y-auto z-50 relative">
+              <button
+                onClick={() => setIsHelpOpen(false)}
+                className="absolute top-6 right-6 text-gray-600 hover:text-red-500 text-2xl"
+                aria-label="Fermer"
+              >
+                <X />
+              </button>
+              <Dialog.Title className="text-2xl text-emerald-400 font-bold mb-4">
+                Aide pour remplir le formulaire
+              </Dialog.Title>
+              <div>{tutorial || defaultTutorial}</div>
+            </Dialog.Panel>
+          </Transition.Child>
+        </Dialog>
+      </Transition>
+    </>
+  );
+}
+=== ./components/MultiStepForm.jsx ===
+import StepProgressBar from './StepProgressBar';
+import StepNavigation from './StepNavigation';
+import { AnimatePresence, motion } from 'framer-motion';
+
+export default function MultiStepForm({
+  steps,
+  step,
+  setStep,
+  onNext,
+  onPrev,
+  onSubmit,
+  isNextDisabled,
+  isSubmitting,
+  showNavigation = true,
+  submitLabel = 'Valider',
+  colorClass = 'bg-emerald-600',
+}) {
+  return (
+    <div>
+      <StepProgressBar step={step} totalSteps={steps.length} colorClass={colorClass} />
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={step}
+          initial={{ opacity: 0, x: 30 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -30 }}
+          transition={{ duration: 0.3 }}
+          className="min-h-[250px]" // <--- Hauteur minimale
+        >
+          {steps[step - 1].content}
+        </motion.div>
+      </AnimatePresence>
+
+      {showNavigation && <StepNavigation steps={steps} step={step} setStep={setStep} />}
+
+      <div className="flex flex-wrap justify-between items-center gap-4 pt-4 border-t border-gray-200 mt-6">
+        <button
+          type="button"
+          onClick={() => typeof onPrev === 'function' && onPrev('cancel')}
+          className="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200"
+        >
+          Annuler
+        </button>
+
+        <div className="flex gap-2 ml-auto">
+          {step > 1 && (
+            <button
+              type="button"
+              onClick={onPrev}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm"
+            >
+              ← Précédent
+            </button>
+          )}
+          {step < steps.length ? (
+            <button
+              type="button"
+              onClick={onNext}
+              disabled={isNextDisabled() || isSubmitting}
+              className={`px-4 py-2 rounded font-semibold text-sm transition ${
+                isNextDisabled() || isSubmitting
+                  ? 'bg-gray-400 text-gray-100 cursor-not-allowed'
+                  : `${colorClass} text-white hover:brightness-110`
+              }`}
+            >
+              Suivant →
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={isNextDisabled() || isSubmitting}
+              onClick={onSubmit}
+              className={`px-4 py-2 rounded font-semibold text-sm transition ${
+                isNextDisabled() || isSubmitting
+                  ? 'bg-gray-400 text-white cursor-not-allowed'
+                  : `${colorClass} text-white hover:brightness-110`
+              }`}
+            >
+              {submitLabel}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+=== ./components/PatientForm.jsx ===
+import React, { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { createPatient, updatePatient, fetchPatients } from '@/controllers/patientsController';
+import { getPatientById } from '../controllers/patientsController';
+import { colors } from '../theme';
+import { showToast } from '../utils/alerts';
+
+const fieldsConfig = [
+  { name: 'numSec', label: 'Numéro', type: 'text', placeholder: 'Entrez le numéro ' },
+  { name: 'nom', label: 'Nom', type: 'text', placeholder: 'Entrez le nom' },
+  { name: 'telephone', label: 'Téléphone', type: 'number', placeholder: 'Entrez le numéro téléphone' },
+];
+
+export default function PatientForm({ patientId, onSuccess, onClose }) {
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm();
+  const [mode, setMode] = useState('create');
+
+  useEffect(() => {
+    const loadPatient = async () =>{
+      if (patientId) {
+        setMode('edit');
+          setMode('edit');
+          const data = await getPatientById(patientId);
+          if (data) {
+            reset(data);
+          }
+      } else {
+        setMode('create');
+        reset({});
+      }
+    }
+    loadPatient();
+
+
+  }, [patientId, reset]);
+
+  const onSubmit = async (data) => {
+    try {
+      if (mode === 'create') {
+        await createPatient(data);
+        showToast("Patient ajouté avec succès")
+
+      } else {
+        await updatePatient(patientId, data);
+        showToast("Patient modifié avec succès")
+
+      }
+      onSuccess(); 
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      {fieldsConfig.map((field) => (
+        <div key={field.name}>
+          <label htmlFor={field.name} className="block text-sm font-medium text-gray-700">
+            {field.label}
+          </label>
+          <input
+            id={field.name}
+            type={field.type}
+            placeholder={field.placeholder}
+            {...register(field.name, { required: `${field.label} requis` })}
+            className="mt-1 block w-full border border-gray-300 rounded-md p-2"
+          />
+          {errors[field.name] && (
+            <p className="mt-1 text-red-500 text-sm">{errors[field.name].message}</p>
+          )}
+        </div>
+      ))}
+      <div className='flex justify-between items-center pt-4'>
+        <button
+          type="button"
+          onClick={onClose}
+          className="px-4 py-2 text-gray-600 bg-gray-200 hover:bg-gray-300 rounded-lg"
+        >
+          Annuler
+        </button>
+
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className={`px-4 py-2 text-white ${colors.primary.button} rounded-lg`}
+        >
+          {isSubmitting ? 'En cours...' : mode === 'create' ? 'Créer' : 'Mettre à jour'}
+        </button>
+      </div>
+    </form>
+  );
+}
+=== ./components/ProtectedRoute.jsx ===
+// components/ProtectedRoute.jsx
+import React from 'react';
+import { Navigate } from 'react-router-dom';
+import { getCurrentUser } from '../controllers/authController';
+
+const ProtectedRoute = ({ children }) => {
+  const user = getCurrentUser();
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+};
+
+export default ProtectedRoute;
+=== ./components/RdvForm.jsx ===
+import React, { useEffect, useState } from 'react';
+import {
+  getRdvById, createRdv, updateRdv,
+  getMedecinsDisponibles, getCabinetsDisponibles
+} from '@/controllers/rdvController';
+import { fetchPatients, createPatient, searchPatient } from '@/controllers/patientsController';
+import MultiStepForm from './MultiStepForm';
+import { User } from 'lucide-react';
+import { colors } from '@/theme';
+
+export default function RdvForm({ rdvId, onSuccess, onClose }) {
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [patients, setPatients] = useState([]);
+  const [medecins, setMedecins] = useState([]);
+  const [cabinets, setCabinets] = useState([]);
+  const [isNewPatient, setIsNewPatient] = useState(false);
+
+  const [form, setForm] = useState({
+    idRDV: '', numSec: '', patientInfo: null,
+    date: '', heureDeb: '', heureFin: '',
+    matricule: '', lieu: ''
+  });
+
+  const [newPatientForm, setNewPatientForm] = useState({
+    nom: '', numSec: '', telephone: '',
+  });
+
+  useEffect(() => {
+    fetchPatients().then(setPatients);
+  }, []);
+
+  useEffect(() => {
+    if (rdvId) {
+      setLoading(true);
+      getRdvById(rdvId)
+        .then((data) => {
+          setForm({
+            ...form,
+            idRDV: data.idRDV,
+            numSec: data.numSec,
+            date: data.date.slice(0, 10),
+            heureDeb: data.heureDeb,
+            heureFin: data.heureFin,
+            matricule: data.matricule,
+            lieu: data.lieu,
+          });
+        })
+        .catch(() => setError("Erreur de chargement"))
+        .finally(() => setLoading(false));
+    }
+  }, [rdvId]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm(prev => ({ ...prev, [name]: value }));
+
+    if (['nom', 'numSec', 'telephone'].includes(name)) {
+      setNewPatientForm(prev => ({ ...prev, [name]: value }));
+      setIsNewPatient(true);
+    }
+  };
+
+  const handleAddPatient = async () => {
+    if (!newPatientForm.nom || !newPatientForm.numSec) {
+      setError("Nom et numéro de sécurité sont requis.");
+      return;
+    }
+    try {
+      const newPatient = await createPatient(newPatientForm);
+      setPatients([...patients, newPatient]);
+      setForm({ ...form, numSec: newPatient.numSec, patientInfo: newPatient });
+      setNewPatientForm({ nom: '', numSec: '', telephone: '' });
+      setError(null);
+    } catch {
+      setError("Erreur lors de l'ajout du patient.");
+    }
+  };
+
+  const handleNext = async () => {
+    setError(null);
+    try {
+      if (step === 1) {
+        if (isNewPatient) {
+          if (!newPatientForm.nom || !newPatientForm.numSec) {
+            return setError("Nom et numéro de sécurité sont requis.");
+          }
+          await handleAddPatient();
+        } else {
+          if (!form.numSec) {
+            return setError("Veuillez sélectionner un patient.");
+          }
+          const result = await searchPatient(form.numSec);
+          const found = result?.find(p => p.numSec === form.numSec);
+          if (found) {
+            setForm(prev => ({ ...prev, patientInfo: found }));
+          } else {
+            return setError("Patient non trouvé.");
+          }
+        }
+        setStep(2);
+      } else if (step === 2) {
+        if (!form.date || !form.heureDeb || !form.heureFin) {
+          return setError("Veuillez renseigner la date et les heures.");
+        }
+        const [dispoMed, dispoCab] = await Promise.all([
+          getMedecinsDisponibles(form.date, form.heureDeb, form.heureFin),
+          getCabinetsDisponibles(form.date, form.heureDeb, form.heureFin),
+        ]);
+        setMedecins(dispoMed);
+        setCabinets(dispoCab);
+        setStep(3);
+      } else if (step === 3) {
+        if (!form.matricule) return setError("Veuillez sélectionner un médecin.");
+        setStep(4);
+      }
+    } catch (error) {
+      setError("Erreur : " + error.message);
+    }
+  };
+
+  const handlePrev = (type) => {
+    if (type === 'cancel') onClose();
+    else setStep(prev => Math.max(prev - 1, 1));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    const data = {
+      date: form.date,
+      heureDeb: form.heureDeb,
+      heureFin: form.heureFin,
+      numSec: form.numSec,
+      matricule: form.matricule,
+      lieu: form.lieu,
+    };
+    try {
+      rdvId ? await updateRdv(rdvId, data) : await createRdv(data);
+      onSuccess();
+    } catch (err) {
+      setError(err.response?.data?.message || "Erreur lors de l'enregistrement.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isNextDisabled = () => {
+    if (step === 1) return isNewPatient ? false : !form.numSec;
+    if (step === 2) return !form.date || !form.heureDeb || !form.heureFin;
+    if (step === 3) return !form.matricule;
+    if (step === 4) return !form.lieu;
+    return false;
+  };
+
+  const steps = [
+    {
+      label: 'Patient',
+      content: (
+        <div className="space-y-4 mb-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <select
+                name="numSec"
+                value={form.numSec}
+                onChange={(e) => {
+                  handleChange(e);
+                  setIsNewPatient(e.target.value === ''); // Si le champ est vide, "Nouveau patient" est coché
+                }}
+                disabled={isNewPatient}
+                className={`pl-8 p-2 rounded-lg text-sm ${
+                  isNewPatient ? 'bg-gray-100 cursor-not-allowed' : ''
+                }`}
+              >
+                <option value="">Choisir un patient...</option>
+                {patients.map((p) => (
+                  <option key={p.numSec} value={p.numSec}>
+                    {p.nom} ({p.numSec})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={isNewPatient}
+                onChange={() => setIsNewPatient(!isNewPatient)}
+                className="accent-emerald-500"
+              />
+              Nouveau patient
+            </label>
+          </div>
+
+          {/* Champs visibles dans tous les cas */}
+          <input
+            type="text"
+            name="nom"
+            placeholder="Nom"
+            value={isNewPatient ? newPatientForm.nom : form.patientInfo?.nom || ''}
+            onChange={handleChange}
+            className="w-full p-2 border rounded"
+          />
+          <input
+            type="text"
+            name="numSec"
+            placeholder="Numéro de sécu"
+            value={isNewPatient ? newPatientForm.numSec : form.patientInfo?.numSec || ''}
+            onChange={handleChange}
+            className="w-full p-2 border rounded"
+          />
+          <input
+            type="text"
+            name="telephone"
+            placeholder="Téléphone"
+            value={isNewPatient ? newPatientForm.telephone : form.patientInfo?.telephone || ''}
+            onChange={handleChange}
+            className="w-full p-2 border rounded"
+          />
+        </div>
+      ),
+    },
+    {
+      label: 'Date & Heure',
+      content: (
+        <div className="space-y-6">
+          <label className="block text-sm font-medium text-gray-700">Date</label>
+          <input
+            type="date"
+            name="date"
+            value={form.date}
+            onChange={handleChange}
+            className="w-full p-3 border rounded-md"
+          />
+          <div className="flex space-x-4">
+            <input
+              type="time"
+              name="heureDeb"
+              value={form.heureDeb}
+              onChange={handleChange}
+              className="w-full p-3 border rounded-md"
+            />
+            <input
+              type="time"
+              name="heureFin"
+              value={form.heureFin}
+              onChange={handleChange}
+              className="w-full p-3 border rounded-md"
+            />
+          </div>
+        </div>
+      ),
+    },
+    {
+      label: 'Médecin',
+      content: (
+        <select name="matricule" value={form.matricule} onChange={handleChange} className="w-full p-3 border rounded">
+          <option value="">-- Sélectionner un médecin --</option>
+          {medecins.map((m) => (
+            <option key={m._id} value={m.matricule}>{m.nom} ({m.type})</option>
+          ))}
+        </select>
+      ),
+    },
+    {
+      label: 'Cabinet',
+      content: (
+        <select name="lieu" value={form.lieu} onChange={handleChange} className="w-full p-3 border rounded">
+          <option value="">-- Sélectionner un cabinet --</option>
+          {cabinets.map((c) => (
+            <option key={c._id} value={c.lieu}>{c.nom} ({c.lieu})</option>
+          ))}
+        </select>
+      ),
+    },
+  ];
+
+  return (
+    <form onSubmit={handleSubmit} className={`space-y-8 max-w-2xl mx-auto ${colors.secondary.background} ${colors.secondary.border}`}>
+      {error && (
+        <div className="bg-red-100 text-red-800 px-4 py-2 rounded border-l-4 border-red-500">
+          <strong>Erreur : </strong>{error}
+        </div>
+      )}
+
+      <MultiStepForm
+        steps={steps}
+        step={step}
+        setStep={setStep}
+        onNext={handleNext}
+        onPrev={handlePrev}
+        onSubmit={handleSubmit}
+        isNextDisabled={isNextDisabled}
+        isSubmitting={loading}
+        submitLabel={rdvId ? 'Modifier' : 'Créer'}
+        colorClass={colors.primary.button}
+      />
+    </form>
+  );
+}
+=== ./components/RdvFormSteep.jsx ===
+// src/components/RdvForm.jsx
+
+import React, { useEffect, useState } from 'react';
+import {
+  getRdvById,
+  createRdv,
+  updateRdv,
+  getMedecinsDisponibles,
+  getCabinetsDisponibles,
+  getPatientByNumSec,
+  getMedecinByMatricule,
+} from '@/controllers/rdvController';
+import { fetchPatients, createPatient } from '@/controllers/patientsController';
+import { getSteps } from './rdvSteep';
+import { colors } from '@/theme';
+
+export default function RdvForm({ rdvId, onSuccess, onClose }) {
+  const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const [patients, setPatients] = useState([]);
+  const [medecins, setMedecins] = useState([]);
+  const [cabinets, setCabinets] = useState([]);
+
+  const [isNewPatient, setIsNewPatient] = useState(false);
+
+  const [form, setForm] = useState({
+    idRDV: '',
+    numSec: '',
+    patientInfo: null,
+    date: '',
+    heure: '',
+    matricule: '',
+    medecinInfo: null,
+    lieu: '',
+    cabinetInfo: null,
+  });
+
+  const [newPatientForm, setNewPatientForm] = useState({
+    nom: '',
+    numSec: '',
+  });
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const pts = await fetchPatients();
+        setPatients(pts);
+      } catch {
+        setError("Impossible de charger les patients.");
+      }
+    }
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    if (rdvId) {
+      setLoading(true);
+      getRdvById(rdvId)
+        .then((data) => {
+          setForm((prev) => ({
+            ...prev,
+            idRDV: data.idRDV,
+            numSec: data.numSec,
+            date: data.date.slice(0, 10),
+            heure: data.heure,
+            matricule: data.matricule,
+            lieu: data.lieu,
+          }));
+        })
+        .catch(() => setError("Erreur de chargement du RDV"))
+        .finally(() => setLoading(false));
+    }
+  }, [rdvId]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleNewPatientChange = (e) => {
+    const { name, value } = e.target;
+    setNewPatientForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddPatient = async () => {
+    if (!newPatientForm.nom || !newPatientForm.numSec) {
+      setError("Nom et numéro de sécurité sont requis.");
+      return;
+    }
+
+    try {
+      const newPatient = await createPatient(newPatientForm);
+      setPatients((prev) => [...prev, newPatient]);
+      setForm((prev) => ({
+        ...prev,
+        numSec: newPatient.numSec,
+        patientInfo: newPatient,
+      }));
+      setNewPatientForm({ nom: '', numSec: '' });
+      setError(null);
+      setStep(2);
+    } catch (err) {
+      setError("Erreur lors de l'ajout du patient.");
+    }
+  };
+
+  const handleNext = async () => {
+    setError(null);
+    try {
+      if (step === 1) {
+        if (isNewPatient) return;
+        if (!form.numSec) return setError("Veuillez sélectionner un patient.");
+        const info = await getPatientByNumSec(form.numSec);
+        setForm((prev) => ({ ...prev, patientInfo: info }));
+        setStep(2);
+      } else if (step === 2) {
+        if (!form.date || !form.heure) return setError("Veuillez choisir une date et une heure.");
+        const [dispoMed, dispoCab] = await Promise.all([
+          getMedecinsDisponibles(form.date, form.heure, form.heure),
+          getCabinetsDisponibles(form.date, form.heure, form.heure),
+        ]);
+        setMedecins(dispoMed);
+        setCabinets(dispoCab);
+        setStep(3);
+      } else if (step === 3 && form.matricule) {
+        const info = await getMedecinByMatricule(form.matricule);
+        setForm((prev) => ({ ...prev, medecinInfo: info }));
+        setStep(4);
+      }
+    } catch (err) {
+      setError("Une erreur est survenue.");
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+
+    const data = {
+      idRDV: rdvId ? form.idRDV : `RDV-${Date.now()}`,
+      date: form.date,
+      heure: form.heure,
+      numSec: form.numSec,
+      matricule: form.matricule,
+      lieu: form.lieu,
+    };
+
+    try {
+      if (rdvId) {
+        await updateRdv(rdvId, data);
+      } else {
+        await createRdv(data);
+      }
+      onSuccess();
+    } catch (err) {
+      setError(err.message || "Erreur lors de l'enregistrement.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const isNextButtonDisabled = () => {
+    if (step === 1) return isNewPatient ? false : !form.numSec;
+    if (step === 2) return !form.date || !form.heure;
+    if (step === 3) return !form.matricule;
+    return false;
+  };
+
+  const steps = getSteps({
+    isNewPatient,
+    setIsNewPatient,
+    form,
+    handleChange,
+    newPatientForm,
+    handleNewPatientChange,
+    handleAddPatient,
+    patients,
+    medecins,
+    cabinets,
+  });
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className={`space-y-8 max-w-2xl mx-auto p-6 rounded-xl shadow-md ${colors.secondary.background} ${colors.secondary.border}`}
+    >
+      {/* Barre de progression */}
+      <div className="w-full h-2 bg-gray-200 rounded-full mb-6">
+        <div
+          className={`h-full ${colors.primary.button} rounded-full`}
+          style={{ width: `${(step / steps.length) * 100}%` }}
+        />
+      </div>
+
+      {/* Navigation des étapes */}
+      <div className="flex items-center justify-between mb-6">
+        {steps.map((s, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => setStep(i + 1)}
+            className={`flex-1 text-center py-2 rounded-lg mx-1 font-semibold transition-all duration-300 border ${
+              step === i + 1
+                ? 'bg-emerald-600 text-white'
+                : 'bg-gray-100 text-gray-700 border-gray-300 hover:border-gray-400'
+            }`}
+          >
+            Étape {i + 1}
+          </button>
+        ))}
+      </div>
+
+      {/* Message d'erreur */}
+      {error && (
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-3 mb-4">
+          <strong>Erreur :</strong> {error}
+        </div>
+      )}
+
+      {/* Contenu de l'étape actuelle */}
+      <div className="border-t pt-4">{steps[step - 1].content}</div>
+
+      {/* Boutons de navigation */}
+      <div className="flex justify-between items-center pt-6 space-x-2">
+        {step > 1 && (
+          <button
+            type="button"
+            onClick={() => setStep((s) => s - 1)}
+            className="px-5 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+          >
+            ← Précédent
+          </button>
+        )}
+
+        <div className="flex gap-2 ml-auto">
+          {step < steps.length ? (
+            <button
+              type="button"
+              onClick={handleNext}
+              disabled={isNextButtonDisabled()}
+              className={`px-5 py-2 rounded font-semibold transition-all ${
+                isNextButtonDisabled() ? 'bg-gray-400' : 'bg-emerald-600 text-white'
+              }`}
+            >
+              Suivant →
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={loading}
+              className={`px-5 py-2 rounded font-semibold transition-all ${
+                loading ? 'bg-gray-400' : 'bg-emerald-600 text-white'
+              }`}
+            >
+              {loading ? 'Enregistrement...' : rdvId ? 'Modifier' : 'Créer'}
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+          >
+            Annuler
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+=== ./components/rdvSteep.jsx ===
+import React from 'react';
+
+export const getSteps = ({
+  isNewPatient,
+  setIsNewPatient,
+  form,
+  handleChange,
+  newPatientForm,
+  handleNewPatientChange,
+  handleAddPatient,
+  patients,
+  medecins,
+  cabinets,
+}) => [
+  {
+    label: 'Patient',
+    content: (
+      <div className="space-y-4">
+        <div className="flex items-center gap-4">
+          <label className="text-sm font-medium">Patient existant</label>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isNewPatient}
+              onChange={() => setIsNewPatient(!isNewPatient)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-emerald-600 transition-all duration-300"></div>
+            <span className="ml-3 text-sm font-medium text-gray-900">
+              {isNewPatient ? 'Nouveau patient' : 'Patient existant'}
+            </span>
+          </label>
+        </div>
+
+        {!isNewPatient && (
+          <>
+            <select
+              name="numSec"
+              value={form.numSec}
+              onChange={handleChange}
+              className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            >
+              <option value="">Choisir un patient...</option>
+              {patients.map((p) => (
+                <option key={p.numSec} value={p.numSec}>
+                  {p.nom} ({p.numSec})
+                </option>
+              ))}
+            </select>
+            {form.patientInfo && (
+              <p className="text-sm text-green-600">
+                Patient : {form.patientInfo.nom} – {form.patientInfo.email} – {form.patientInfo.telephone}
+              </p>
+            )}
+          </>
+        )}
+
+        {isNewPatient && (
+          <>
+            <h3 className="text-sm font-medium">Ajouter un nouveau patient</h3>
+            <input
+              type="text"
+              name="nom"
+              value={newPatientForm.nom}
+              onChange={handleNewPatientChange}
+              placeholder="Nom du patient"
+              className="w-full p-3 border rounded-lg mb-2"
+            />
+            <input
+              type="text"
+              name="numSec"
+              value={newPatientForm.numSec}
+              onChange={handleNewPatientChange}
+              placeholder="Numéro de sécurité"
+              className="w-full p-3 border rounded-lg"
+            />
+            <button
+              type="button"
+              onClick={handleAddPatient}
+              className="mt-2 w-full bg-green-600 text-white p-3 rounded-lg"
+            >
+              Ajouter le patient
+            </button>
+          </>
+        )}
+      </div>
+    ),
+  },
+  {
+    label: 'Date & Heure',
+    content: (
+      <div className="space-y-4">
+        <label className="block text-sm font-medium">Date</label>
+        <input
+          type="date"
+          name="date"
+          value={form.date}
+          onChange={handleChange}
+          className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400"
+        />
+        <label className="block text-sm font-medium">Heure</label>
+        <input
+          type="time"
+          name="heure"
+          value={form.heure}
+          onChange={handleChange}
+          className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400"
+        />
+      </div>
+    ),
+  },
+  {
+    label: 'Médecin',
+    content: (
+      <div className="space-y-4">
+        <label className="block text-sm font-medium">Médecin disponible</label>
+        <select
+          name="matricule"
+          value={form.matricule}
+          onChange={handleChange}
+          className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400"
+        >
+          <option value="">-- Sélectionner --</option>
+          {medecins.map((m) => (
+            <option key={m._id} value={m.matricule}>
+              {m.nom} ({m.type})
+            </option>
+          ))}
+        </select>
+      </div>
+    ),
+  },
+  {
+    label: 'Cabinet',
+    content: (
+      <div className="space-y-4">
+        <label className="block text-sm font-medium">Cabinet disponible</label>
+        <select
+          name="lieu"
+          value={form.lieu}
+          onChange={handleChange}
+          className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400"
+        >
+          <option value="">-- Sélectionner --</option>
+          {cabinets.map((c) => (
+            <option key={c._id} value={c.lieu}>
+              {c.nom} ({c.lieu})
+            </option>
+          ))}
+        </select>
+      </div>
+    ),
+  },
+];
+=== ./components/Sidebar.jsx ===
+import React from 'react';
+import { NavLink } from 'react-router-dom';
+import {
+  Users,
+  Calendar,
+  FileText,
+  Hospital,
+  LayoutDashboard,
+  Home,
+  Menu,
+  ChevronLeft,
+  ChevronRight,
+  HomeIcon,
+  Cable
+} from 'lucide-react';
+import { colors } from '../theme';
+
+const menuItems = [
+  { to: '/admin/home', icon: <Home />, label: 'Accueil' },
+  { to: '/admin/dashboard', icon: <LayoutDashboard />, label: 'Dashboard' },
+  { to: '/admin/medecin', icon: <Hospital />, label: 'Médecins' },
+  { to: '/admin/patients', icon: <Users />, label: 'Patients' },
+  { to: '/admin/appointments', icon: <Calendar />, label: 'Rendez‑vous' },
+  { to: '/admin/cabinets', icon:  <Cable/>, label: 'Cabinet' },
+];
+
+const Sidebar = ({ isOpen, onToggle, onClose }) => (
+  <aside
+    className={`fixed inset-y-0 left-0 bg-white ${colors.shadow.dark} z-20 transform transition-all duration-300
+      ${isOpen ? 'w-64' : 'w-16'}
+    `}
+  >
+    <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200">
+      {isOpen && (
+        <h1 className={`text-xl font-semibold tracking-tight`}>
+           Gestion des patients 
+        </h1>
+      )}
+      <button
+        onClick={onToggle}
+        className={`p-2 rounded-full ${colors.primary.button} text-white transition-transform hover:scale-105`}
+      >
+        {isOpen ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+      </button>
+    </div>
+
+    <nav className="mt-6 flex flex-col space-y-2 overflow-auto px-1">
+      {menuItems.map(item => (
+        <NavLink
+          key={item.to}
+          to={item.to}
+          className={({ isActive }) =>
+            `flex items-center px-4 py-3 rounded-lg transition-all duration-300 ease-in-out
+              ${isActive
+                ? `${colors.primary.gradient} ${colors.primary.text} ${colors.shadow.light}`
+                : 'text-gray-600 hover:bg-gray-100'}
+            `
+          }
+          onClick={onClose}
+        >
+          <span className={`w-6 h-6 mr-3`}>{item.icon}</span>
+          {isOpen && (
+            <span className="ml-2 text-base font-medium">{item.label}</span>
+          )}
+        </NavLink>
+      ))}
+    </nav>
+  </aside>
+);
+
+export default Sidebar;
+=== ./components/StepNavigation.jsx ===
+import React from 'react';
+
+export default function StepNavigation({ steps, step, setStep }) {
+  return (
+    <div className="flex justify-center gap-1 pt-2 mb-6">
+      {steps.map((_, i) => {
+        const isActive = step === i + 1;
+        return (
+          <button
+            key={i}
+            type="button"
+            aria-current={isActive ? 'step' : undefined}
+            onClick={() => setStep(i + 1)}
+            className={`w-8 h-8 flex items-center justify-center rounded-full font-bold border transition duration-200 text-sm
+              ${isActive
+                ? 'bg-emerald-600 text-white border-emerald-600'
+                : 'bg-gray-100 text-gray-700 border-gray-300 hover:border-gray-400 hover:bg-gray-200'
+              }`}
+          >
+            {i + 1}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+=== ./components/Stepper.jsx ===
+import React from 'react';
+
+export default function Stepper({ steps, currentStep, onStepClick }) {
+  return (
+    <div className="flex items-center justify-between mb-8">
+      {steps.map((step, index) => {
+        const isActive = index + 1 === currentStep;
+        const isCompleted = index + 1 < currentStep;
+
+        return (
+          <div key={index} className="flex-1">
+            <div
+              className={`flex items-center cursor-pointer ${
+                isCompleted ? 'text-emerald-600' : isActive ? 'text-emerald-500' : 'text-gray-400'
+              }`}
+              onClick={() => onStepClick(index + 1)}
+            >
+              <div
+                className={`w-8 h-8 flex items-center justify-center rounded-full border-2 ${
+                  isCompleted
+                    ? 'bg-emerald-600 border-emerald-600 text-white'
+                    : isActive
+                    ? 'bg-white border-emerald-500'
+                    : 'bg-white border-gray-300'
+                }`}
+              >
+                {isCompleted ? '✓' : index + 1}
+              </div>
+              <span className="ml-2">{step}</span>
+            </div>
+            {index < steps.length - 1 && (
+              <div className="h-1 bg-gray-300 mt-2 mx-4"></div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+=== ./components/StepProgressBar.jsx ===
+export default function StepProgressBar({ step, totalSteps, colorClass }) {
+    const progress = (step / totalSteps) * 100;
+    return (
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={totalSteps}
+        aria-valuenow={step}
+        className="w-full h-2 bg-gray-200 rounded-full mb-6"
+      >
+        <div className={`h-full ${colorClass} rounded-full`} style={{ width: `${progress}%` }} />
+      </div>
+    );
+  }
+  === ./contexts/UserContext.jsx ===
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { getCurrentUser } from '../controllers/authController';
+
+const UserContext = createContext(null);
+
+export const UserProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const u = await getCurrentUser();
+      setUser(u);
+    };
+    fetchUser();
+  }, []);
+
+  return (
+    <UserContext.Provider value={{ user, setUser }}>
+      {children}
+    </UserContext.Provider>
+  );
+};
+
+export const useUser = () => useContext(UserContext);
+=== ./controllers/appointmentsController.js ===
+import api from '../services/api';
+
+export const getAppointments = async () => {
+  const response = await api.get('/appointments');
+  return response.data;
+};
+
+export const getAppointmentById = async (id) => {
+  const response = await api.get(`/appointments/${id}`);
+  return response.data;
+};
+
+export const createAppointment = async (appointmentData) => {
+  const response = await api.post('/appointments', appointmentData);
+  return response.data;
+};
+
+export const updateAppointment = async (id, updatedData) => {
+  const response = await api.put(`/appointments/${id}`, updatedData);
+  return response.data;
+};
+
+export const deleteAppointment = async (id) => {
+  const response = await api.delete(`/appointments/${id}`);
+  return response.data;
+};
+
+=== ./controllers/authController.js ===
+import api from '../services/api';
+
+export function getCurrentUser() {
+  const storage = localStorage.getItem('authToken') ? localStorage : sessionStorage;
+  const user = storage.getItem('currentUser');
+  return user ? JSON.parse(user) : null;
+}
+
+export async function login({ email, mdp, rememberMe }) {
+  const response = await api.post('/user/login', { email, mdp, rememberMe });
+  const { token, user } = response.data;
+  const storage = rememberMe ? localStorage : sessionStorage;
+  storage.setItem('authToken', token);
+  storage.setItem('currentUser', JSON.stringify(user));
+  
+  return user;
+}
+=== ./controllers/cabinetsController.js ===
+import api from '../services/api';
+
+export const fetchCabinets = async () => {
+  const response = await api.get('/cabinets');
+  return response.data;
+};
+
+export const createCabinet = async (cabinetData) => {
+  const response = await api.post('/cabinets', cabinetData);
+  return response.data;
+};
+
+export const updateCabinet = async (id, updatedData) => {
+  const response = await api.put(`/cabinets/${id}`, updatedData);
+  return response.data;
+};
+
+export const deleteCabinet = async (id) => {
+  const response = await api.delete(`/cabinets/${id}`);
+  return response.data;
+};
+=== ./controllers/medecinsController.js ===
+import api from '../services/api';
+
+export const fetchMedecins = async () => {
+  const response = await api.get('/medecins');
+  return response.data;
+};
+
+export const getMedecinById = async (id) => {
+  const response = await api.get(`/medecins/${id}`);
+  return response.data;
+};
+
+export const createMedecin = async (medecinData) => {
+  const response = await api.post('/medecins', medecinData);
+  return response.data;
+};
+
+export const updateMedecin = async (id, updatedData) => {
+  const response = await api.put(`/medecins/${id}`, updatedData);
+  return response.data;
+};
+
+export const deleteMedecin = async (id) => {
+  const response = await api.delete(`/medecins/${id}`);
+  return response.data;
+};
+
+export const searchMedecin = async (keyword) => {
+  const response = await api.get(`/medecins/search/?keyword=${keyword}`);
+  return response.data;
+};=== ./controllers/patientsController.js ===
+import api from '../services/api';
+
+export const fetchPatients = async () => {
+  const response = await api.get('/patients');
+  return response.data;
+};
+
+export const getPatientById = async (id) => {
+  const response = await api.get(`/patients/${id}`);
+  return response.data;
+};
+
+export const createPatient = async (patientData) => {
+  const response = await api.post('/patients', patientData);
+  return response.data;
+};
+
+export const updatePatient = async (id, updatedData) => {
+  const response = await api.put(`/patients/${id}`, updatedData);
+  return response.data;
+};
+
+export const deletePatient = async (id) => {
+  const response = await api.delete(`/patients/${id}`);
+  return response.data;
+};
+
+export const searchPatient = async (keyword) => {
+  const reponse = await api.get(`/patients/search/?keyword=${keyword}`);
+  return reponse.data;
+}=== ./controllers/rdvController.js ===
+import api from '../services/api';
+
+export const fetchRdvs = async () => {
+  const response = await api.get('/rdv');
+  return response.data;
+};
+
+export const getRdvById = async (id) => {
+  const response = await api.get(`/rdv/${id}`);
+  return response.data;
+};
+
+export const createRdv = async (rdvData) => {
+  const response = await api.post('/rdv', rdvData);
+  return response.data;
+};
+
+export const updateRdv = async (id, updatedData) => {
+  const response = await api.put(`/rdv/${id}`, updatedData);
+  return response.data;
+};
+
+export const getPatientByNumSec = async (numSec) => {
+  const response = await api.get(`/rdv/recherche/patient/${numSec}`);
+  return response.data[0]; // Le backend renvoie un tableau
+};
+
+export const getMedecinByMatricule = async (matricule) => {
+  const response = await api.get(`/rdv/recherche/medecin/${matricule}`);
+  return response.data[0]; // Le backend renvoie un tableau
+};
+
+export const getCabinetByLieu = async (lieu) => {
+  const response = await api.get(`/rdv/recherche/cabinet/${lieu}`);
+  return response.data[0]; // Le backend renvoie un tableau
+};
+
+export const getMedecinsDisponibles = async (date, heureDebut, heureFin) => {
+  const response = await api.get('/rdv/medecins/disponibles', {
+    params: { date, heureDebut, heureFin },
+  });
+  return response.data;
+};
+
+export const getCabinetsDisponibles = async (date, heureDebut, heureFin) => {
+  const response = await api.get('/rdv/cabinets/disponibles', {
+    params: { date, heureDebut, heureFin },
+  });
+  return response.data;
+};
+
+export const deleteRdv = async (id) => {
+  const response = await api.delete(`/rdv/${id}`)
+  return response.data;
+}
+
+export const searchRdvByDate = async (date, heure) => {
+  const res = await api.get(`/rdv/search?search=&date=${date}&heure=${heure}`);
+  console.log(res)
+  return await res.data;
+}
+
+export async function searchAllRdvs(query) {
+  const [med, pat, cab] = await Promise.all([
+    api.get(`/rdv/recherche/medecin/${query}`).then(r => r.ok ? r.json() : []),
+    api.get(`/rdv/recherche/patient/${query}`).then(r => r.ok ? r.json() : []),
+    api.get(`/rdv/recherche/cabinet/${query}`).then(r => r.ok ? r.json() : []),
+  ]);
+
+  const mapKey = (rdv) => `${rdv.idRDV}-${rdv.date}-${rdv.heureDeb}-${rdv.heureFin}`;
+  const uniqueMap = new Map();
+
+  [...med, ...pat, ...cab].forEach(rdv => {
+    uniqueMap.set(mapKey(rdv), rdv);
+  });
+
+  return Array.from(uniqueMap.values());
+}=== ./main.jsx ===
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.jsx'
+import React from 'react'
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)
+=== ./pages/Cabinets.jsx ===
+import React, { useState, useEffect, useCallback } from 'react';
+import { Edit, Trash2 } from 'lucide-react';
+import { fetchCabinets, deleteCabinet } from '@/controllers/cabinetsController';
+import CabinetForm from '@/components/CabinetForm';
+import ModalAnime from '@/components/ModalAnime';
+import { colors } from '@/theme';
+
+function useCabinets() {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setData(await fetchCabinets());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const remove = useCallback(async id => {
+    if (window.confirm('Vraiment supprimer ce cabinet ?')) {
+      await deleteCabinet(id);
+      load();
+    }
+  }, [load]);
+
+  useEffect(() => { load(); }, [load]);
+  return { data, loading, load, remove };
+}
+
+export default function Cabinets() {
+  const { data: cabinets, loading, load, remove } = useCabinets();
+  const [editId, setEditId] = useState(null);
+
+  if (loading) return <p>Chargement…</p>;
+
+  return (
+    <div className={`p-6 rounded-xl ${colors.card.default}`}>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold text-gray-800">Cabinets</h2>
+        <button
+          onClick={() => setEditId(null)}
+          className="px-4 py-2 bg-emerald-600 text-white rounded"
+        >
+          + Ajouter
+        </button>
+      </div>
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className={colors.primary.gradient}>
+          <tr>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Nom</th>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Lieu</th>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {cabinets.map(c => (
+            <tr key={c.id} className="hover:bg-gray-50">
+              <td className="px-6 py-4">{c.nom}</td>
+              <td className="px-6 py-4">{c.lieu}</td>
+              <td className="px-6 py-4 flex space-x-2">
+                <button onClick={() => setEditId(c.id)}><Edit /></button>
+                <button onClick={() => remove(c.id)}><Trash2 /></button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <ModalAnime
+        isOpen={editId !== null}
+        onClose={() => setEditId(null)}
+        title={editId ? 'Modifier Cabinet' : 'Ajouter Cabinet'}
+      >
+        <CabinetForm
+          cabinetId={editId}
+          onSuccess={() => { setEditId(null); load(); }}
+          onClose={() => setEditId(null)}
+        />
+      </ModalAnime>
+    </div>
+  );
+}
+=== ./pages/Dashboard.jsx ===
+import React from 'react';
+import { motion } from 'framer-motion';
+import { UserCheck, Calendar, Activity, Users } from 'lucide-react';
+import { colors } from '../theme'; 
+
+const stats = [
+  {
+    id: 1,
+    label: 'Patients enregistrés',
+    value: 128,
+    icon: <UserCheck className={`w-8 h-8 ${colors.primary.icon}`} />,
+    bg: colors.secondary.gradient,
+    fg: colors.primary.text,
+  },
+  {
+    id: 2,
+    label: "Rendez-vous aujourd'hui",
+    value: 12,
+    icon: <Calendar className={`w-8 h-8 ${colors.secondary.icon}`} />,
+    bg: colors.secondary.gradient,
+    fg: colors.secondary.text,
+  },
+  {
+    id: 3,
+    label: 'Consultations en cours',
+    value: 3,
+    icon: <Activity className={`w-8 h-8 ${colors.primary.icon}`} />,
+    bg: colors.secondary.gradient,
+    fg: colors.primary.text,
+  },
+  {
+    id: 4,
+    label: 'Médecins actifs',
+    value: 24,
+    icon: <Users className={`w-8 h-8 ${colors.secondary.icon}`} />,
+    bg: colors.secondary.gradient,
+    fg: colors.secondary.text,
+  },
+];
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: (i = 1) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.1 },
+  }),
+};
+
+export default function Dashboard() {
+  return (
+    <div className="p-8 bg-white rounded-2xl min-h-screen shadow-md">
+      <h1 className="text-4xl font-extrabold mb-2 text-gray-800">
+        Bienvenue sur le tableau de bord
+      </h1>
+      <p className="text-gray-500 mb-8">Résumé des statistiques du jour</p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {stats.map((stat, index) => (
+          <motion.div
+            key={stat.id}
+            custom={index}
+            initial="hidden"
+            animate="visible"
+            variants={cardVariants}
+            className={`${stat.bg} p-6 rounded-2xl shadow-md flex items-center space-x-4 hover:shadow-xl hover:scale-[1.03] transition duration-300`}
+          >
+            <div className="flex-shrink-0">{stat.icon}</div>
+            <div>
+              <h2 className={`text-3xl font-bold ${stat.fg}`}>{stat.value}</h2>
+              <p className="text-gray-600">{stat.label}</p>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+=== ./pages/HomeUser.jsx ===
+import { motion } from 'framer-motion';
+import { User, Calendar, Users, BarChart2, UserPlus } from 'lucide-react';
+import { colors } from '@/theme';
+import { useUser } from '../contexts/UserContext';
+import {useNavigate} from 'react-router-dom';
+
+const HomeUser = () => {
+  const actions = [
+    { name: 'Patients', icon: User, key: 'patients' },
+    { name: 'Rendez-vous', icon: Calendar, key: 'appointments' },
+    { name: 'Médecins', icon: Users, key: 'medecin' },
+    { name: 'Statistiques', icon: BarChart2, key: 'stats' },
+  ];
+
+  const { user } = useUser();
+  console.log(user)
+  const navigate = useNavigate()
+  const handleAction = (key) => {
+    console.log(`Naviguer vers : ${key}`);
+    navigate(`/admin/${key}`); //activer la navigation réelle ici
+  };
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center h-screen text-gray-600 text-lg">
+        Chargement...
+      </div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+      className="max-w-5xl mx-auto mt-16 p-10 rounded-2xl shadow-2xl"
+    >
+      {/* Header */}
+      <div className="flex flex-col md:flex-row items-center justify-between mb-8 gap-6">
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className={`text-5xl font-extrabold ${colors.text.secondary}`}>
+              Bonjour, {user.pseudo}
+            </h1>
+            <p className="mt-1 text-gray-600 text-lg">
+              Que souhaitez-vous faire aujourd'hui ?
+            </p>
+          </div>
+        </div>
+
+        <motion.button
+          whileHover={{ scale: 1.1 }}
+          whileTap={{ scale: 0.9 }}
+          className={`${colors.primary.button} text-white font-semibold py-2 px-6 rounded-xl shadow-lg flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-emerald-300`}
+          onClick={() => handleAction('nouveau')}
+        >
+          <UserPlus className="w-5 h-5 mr-2" />
+          Nouveau Patient
+        </motion.button>
+      </div>
+
+      {/* Action Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
+        {actions.map(({ name, icon: Icon, key }) => (
+          <motion.div
+            key={key}
+            whileHover={{ y: -5 }}
+            className={`${colors.secondary.gradient} flex flex-col items-center bg-white rounded-xl p-6 shadow-md cursor-pointer hover:shadow-xl transition-shadow`}
+            onClick={() => handleAction(key)}
+          >
+            <div className={`${colors.primary.gradient} p-4 rounded-full mb-4`}>
+              <Icon className={`w-8 h-8 ${colors.primary.text}`} />
+            </div>
+            <p className={`text-xl font-medium ${colors.text.secondary}`}>{name}</p>
+          </motion.div>
+        ))}
+      </div>
+    </motion.div>
+  );
+};
+
+export default HomeUser;
+=== ./pages/Login.jsx ===
+import React, { useCallback, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { User, Lock, Eye, EyeOff } from 'lucide-react';
+import clsx from 'clsx';
+import { colors } from '../theme';
+import { login } from '../controllers/authController';
+import toast from 'react-hot-toast';
+
+const TextInput = React.forwardRef(({ label, icon: Icon, type, id, error, ...rest }, ref) => (
+  <div>
+    <label htmlFor={id} className="block text-gray-700 font-medium mb-1">
+      {label}
+    </label>
+    <div
+      className={clsx(
+        'flex items-center border rounded-lg px-3 focus-within:ring-2 transition-colors',
+        error
+          ? 'border-red-500 focus-within:ring-red-400'
+          : `${colors.border.primary} ${colors.border.focus}`
+      )}
+    >
+      <Icon className={clsx('w-5 h-5 mr-2', error ? 'text-red-500' : colors.primary.icon)} />
+      <input
+        id={id}
+        type={type}
+        aria-invalid={error ? 'true' : 'false'}
+        ref={ref}
+        className="flex-1 py-2 outline-none"
+        {...rest}
+      />
+    </div>
+    {error && (
+      <p role="alert" className="text-red-500 text-sm mt-1">
+        {error.message}
+      </p>
+    )}
+  </div>
+));
+
+export default function Login() {
+  const [showmdp, setShowmdp] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const {register, handleSubmit, setError, formState: { errors }} = useForm({
+    mode: 'onBlur',
+    defaultValues: { email: '', mdp: '', rememberMe: false },
+  });
+
+  const onSubmit = useCallback(async (data) => {
+    setSubmitting(true);
+  
+    try {
+      await login(data);
+      window.location.href = '/admin/home';
+
+    } catch (err) {
+      if (err.field) {
+        setError(err.field, { type: 'server', message: err.message });
+      } else {
+        toast.error(err.message); 
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }, [setError]);
+  
+
+  return (
+    <div className={`min-h-screen flex items-center justify-center px-4`}>
+      <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm">
+        <h2 className={`text-2xl font-bold mb-4 text-center ${colors.primary.text}`}>
+          Se connecter
+        </h2>
+        <p className="text-center text-gray-600 mb-4">
+          Gestion des dossiers et rendez-vous des patients
+        </p>
+
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
+          <TextInput
+            id="email"
+            label="Nom d’utilisateur ou e-mail"
+            icon={User}
+            type="text"
+            placeholder="Votre e-mail ou nom d'utilisateur"
+            {...register('email', { required: "Le nom d'utilisateur est requis." })}
+            error={errors.email}
+            className={`flex-1 ${errors.email && 'text-red-500'} py-2 outline-none`}
+
+          />
+
+          <div>
+            <label htmlFor="mdp" className="block text-gray-700 font-medium mb-1">
+              Mot de passe
+            </label>
+            <div
+              className={clsx(
+                'flex items-center border rounded-lg px-3 focus-within:ring-2 transition-colors',
+                errors.mdp
+                  ? 'border-red-500 focus-within:ring-red-400'
+                  : `${colors.border.primary} ${colors.border.focus}`
+
+              )}
+            >
+              <Lock className={clsx('w-5 h-5 mr-2', errors.mdp ? 'text-red-500' : colors.primary.icon)} />
+              <input
+                id="mdp"
+                type={showmdp ? 'text' : 'password'}
+                placeholder="Entrez votre mot de passe"
+                aria-invalid={errors.mdp ? 'true' : 'false'}
+                {...register('mdp', {
+                  required: 'Le mot de passe est requis.',
+                  minLength: { value: 6, message: 'Au moins 6 caractères.' },
+                })}
+                className={`flex-1 ${errors.mdp && 'text-red-500'} py-2 outline-none`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowmdp((v) => !v)}
+                aria-label={showmdp ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                className="ml-2 text-gray-500 hover:text-gray-700 focus:outline-none"
+              >
+                {showmdp ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
+            {errors.mdp && (
+              <p role="alert" className="text-red-500 text-sm mt-1">
+                {errors.mdp.message}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="rememberMe"
+              {...register('rememberMe')}
+              className="mr-2 h-4 w-4 text-green-600 border-gray-300 rounded"
+            />
+            <label htmlFor="rememberMe" className="text-gray-700">
+              Se souvenir de moi
+            </label>
+          </div>
+
+          <button
+            type="submit"
+            disabled={submitting}
+            aria-busy={submitting}
+            className={clsx(
+              'w-full py-2 rounded-lg text-white font-medium transition-colors duration-300',
+              submitting
+                ? `${colors.primary.buttonDisabled} cursor-not-allowed`
+                : `${colors.primary.button} focus:outline-none focus:ring-2`
+            )}
+          >
+            {submitting ? (
+              <span className="flex items-center justify-center">
+                <svg
+                  className="animate-spin h-5 w-5 mr-2 text-white"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+                  <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" className="opacity-75" />
+                </svg>
+                Connexion…
+              </span>
+            ) : (
+              'Se connecter'
+            )}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}=== ./pages/Medecins.jsx ===
+import React, { useState, useEffect, useCallback } from 'react';
+import { Edit, HelpCircle, Search, Trash2 } from 'lucide-react';
+import { fetchMedecins, deleteMedecin, searchMedecin } from '@/controllers/medecinsController';
+import MedecinForm from '@/components/MedecinForm';
+import { colors } from '@/theme';
+import ModalAnime from '@/components/ModalAnime';
+import { showConfirm, showError, showToast } from '../utils/alerts';
+
+// Hook personnalisé
+function useMedecins() {
+  const [medecins, setMedecins] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchMedecins();
+      setMedecins(data);
+    } catch (err) {
+      setError(err.message || 'Erreur lors du chargement.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const search = useCallback(async (term) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await searchMedecin(term);
+      setMedecins(data);
+    } catch (err) {
+      setError(err.message || 'Erreur lors de la recherche.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const remove = useCallback(async (id) => {
+    try {
+      await deleteMedecin(id);
+      setMedecins((prev) => prev.filter((m) => m.id !== id));
+    } catch (err) {
+      throw new Error(err.message || 'Échec de la suppression.');
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return { medecins, loading, error, load, search, remove };
+}
+
+// Composant principal
+export default function Medecins() {
+  const { medecins, loading, error, load, search, remove } = useMedecins();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedMedecinId, setSelectedMedecinId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const onEdit = (id) => {
+    setSelectedMedecinId(id);
+    setIsModalOpen(true);
+  };
+
+  const onAdd = () => {
+    setSelectedMedecinId(null);
+    setIsModalOpen(true);
+  };
+
+  const onDelete = async (id) => {
+    const del = await showConfirm(`Voulez-vous vraiment supprimer ce médecin?`)
+    console.log(del)
+    if (showConfirm(`Voulez-vous vraiment supprimer ce médecin?`)) {
+      try {
+        await remove(id);
+        showToast("Méecin supprimé avec sucèss")
+      } catch (err) {
+        showError(err)
+      } finally {
+        load()
+      }
+    }
+  };
+
+  const onSearch = () => {
+    if (searchTerm.trim() === '') {
+      load();
+    } else {
+      search(searchTerm);
+    }
+  };
+
+  if (loading) return <p className={colors.text.primary}>Chargement...</p>;
+
+  return (
+    <div className={`${colors.card.default} p-6 rounded-xl`}>
+    <div className="flex justify-between items-center mb-4">
+      {/* Titre à gauche */}
+      <div>
+        <h2 className={`text-2xl font-bold ${colors.text.dark}`}>Liste des médecins</h2>
+      </div>
+  
+      {/* Barre de recherche au centre */}
+      <div className="flex-1 flex justify-center">
+        <div className="flex">
+          <input
+            type="text"
+            placeholder="Rechercher..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-l-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                onSearch();
+              }
+            }}
+          />
+          <button
+            onClick={onSearch}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-r-lg"
+          >
+            <Search />
+          </button>
+        </div>
+      </div>
+  
+      {/* Bouton Ajouter à droite */}
+      <div>
+        <button
+          onClick={onAdd}
+          className={`px-4 py-2 rounded-lg text-white ${colors.primary.button}`}
+        >
+          + Ajouter
+        </button>
+      </div>
+    </div>
+  
+
+      <MedecinsTable medecins={medecins} onEdit={onEdit} onDelete={onDelete} />
+
+      <ModalAnime
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={selectedMedecinId ? 'Modifier le Médecin' : 'Ajouter un Médecin'}
+        tutorial={medecinFormGuide}
+      >
+        <MedecinForm
+          medecinId={selectedMedecinId}
+          onSuccess={() => {
+            setIsModalOpen(false);
+            load();
+          }}
+          onClose={() => {
+            setIsModalOpen(false);
+          }}
+        />
+      </ModalAnime>
+    </div>
+  );
+}
+
+// Composant tableau
+function MedecinsTable({ medecins, onEdit, onDelete }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className={`${colors.primary.gradient} border`}>
+          <tr>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">N°Matricule</th>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Nom</th>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Email</th>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Téléphone</th>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">CIN</th>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Type</th>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {medecins.map((m) => (
+            <MedecinRow key={m.id} medecin={m} onEdit={onEdit} onDelete={onDelete} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Ligne tableau
+const MedecinRow = React.memo(function MedecinRow({ medecin, onEdit, onDelete }) {
+  return (
+    <tr className="hover:bg-emerald-50 transition">
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{medecin.matricule}</td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{medecin.nom}</td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{medecin.email}</td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{medecin.telephone}</td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{medecin.cin}</td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{medecin.type}</td>
+      <td className="px-6 py-4 whitespace-nowrap flex space-x-2">
+        <button
+          onClick={() => onEdit(medecin._id)}
+          aria-label="Modifier"
+          className="p-1 text-gray-500 hover:text-emerald-500"
+        >
+          <Edit size={18} />
+        </button>
+        <button
+          onClick={() => onDelete(medecin._id)}
+          aria-label="Supprimer"
+          className="p-1 text-red-600 hover:text-red-800"
+        >
+          <Trash2 size={18} />
+        </button>
+      </td>
+    </tr>
+  );
+});
+
+// Guide d’utilisation du formulaire
+const medecinFormGuide = (
+  <div className="p-4">
+    <h3 className="font-semibold text-xl mb-4 text-gray-800">Comment Remplir le Formulaire Médecin</h3>
+    <p className="mb-6 text-gray-600">
+      Ce formulaire vous permet d’<strong>ajouter</strong> ou de <strong>modifier</strong> un médecin dans le système.
+      Il est divisé en deux étapes pour faciliter la saisie. Utilisez les boutons <span className="font-medium">"Suivant"</span>,
+      <span className="font-medium">"Précédent"</span> et <span className="font-medium">"Annuler"</span> pour naviguer entre les étapes.
+    </p>
+    <ol className="list-decimal pl-6 space-y-5 text-gray-700">
+      <li>
+        <span className="font-semibold text-gray-700">Étape 1 : Informations Générales</span>
+        <p className="text-sm mt-1 text-gray-600">
+          - <strong>N°Matricule :</strong> Identifiant unique du médecin.<br />
+          - <strong>Nom :</strong> Nom complet du médecin.<br />
+          - <strong>Email :</strong> Adresse email valide.
+        </p>
+      </li>
+      <li>
+        <span className="font-semibold text-gray-700">Étape 2 : Coordonnées</span>
+        <p className="text-sm mt-1 text-gray-600">
+          - <strong>Téléphone :</strong> Numéro de téléphone valide.<br />
+          - <strong>CIN :</strong> Numéro de carte d’identité nationale (12 chiffres).<br />
+          - <strong>Type :</strong> Spécialité ou type de médecin.
+        </p>
+      </li>
+      <li>
+        <span className="font-semibold text-gray-700">Validation et Soumission</span>
+        <p className="text-sm mt-1 text-gray-600">
+          - Les champs sont validés automatiquement à chaque étape.<br />
+          - Cliquez sur <strong>"Ajouter" ou "Modifier"</strong> pour enregistrer.
+        </p>
+      </li>
+    </ol>
+    <p className="mt-6 text-sm text-gray-500">
+      En cas d’erreur ou pour annuler, utilisez le bouton <span className="font-medium">"Annuler"</span>.
+    </p>
+  </div>
+);
+=== ./pages/Patients.jsx ===
+import React, { useState, useEffect, useCallback } from 'react';
+import { Edit, HelpCircle, Search, Trash2 } from 'lucide-react';
+import { fetchPatients, deletePatient, searchPatient } from '@/controllers/patientsController';
+import PatientForm from '@/components/PatientForm';
+import { colors } from '@/theme';
+import ModalAnime from '@/components/ModalAnime';
+import { showConfirm, showToast } from '../utils/alerts';
+
+function usePatients() {
+  const [patients, setPatients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchPatients();
+      setPatients(data);
+    } catch (err) {
+      setError(err.message || 'Erreur lors du chargement.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const search = useCallback(async (term) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await searchPatient(term);
+      setPatients(data);
+    } catch (err) {
+      setError(err.message || 'Erreur lors de la recherche.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const remove = useCallback(async (id) => {
+    try {
+      await deletePatient(id);
+      setPatients((prev) => prev.filter((p) => p.id !== id));
+      showToast("Patient supprimé avec sucès")
+    } catch (err) {
+      throw new Error(err.message || 'Échec de la suppression.');
+    } finally {
+      load()
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return { patients, loading, error, load, search, remove };
+}
+
+const PatientRow = React.memo(function PatientRow({ patient, onEdit, onDelete }) {
+  return (
+    <tr className="hover:bg-gray-100 transition">
+      <td className={`px-6 py-4 text-sm ${colors.text.primary}`}>{patient.numSec}</td>
+      <td className={`px-6 py-4 text-sm ${colors.text.primary}`}>{patient.nom}</td>
+      <td className={`px-6 py-4 text-sm ${colors.text.primary}`}>{patient.telephone}</td>
+      <td className="px-6 py-4 text-sm flex space-x-2">
+        <button
+          onClick={() => onEdit(patient._id)}
+          aria-label="Modifier"
+          className={`p-1 ${colors.primary.text} hover:text-emerald-500`}
+        >
+          <Edit size={18} />
+        </button>
+        <button
+          onClick={() => onDelete(patient._id)}
+          aria-label="Supprimer"
+          className="p-1 text-red-600 hover:text-red-800"
+        >
+          <Trash2 size={18} />
+        </button>
+      </td>
+    </tr>
+  );
+});
+
+function PatientsTable({ patients, onEdit, onDelete }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className={colors.primary.gradient}>
+          <tr>
+            <th className={`px-6 py-3 text-left text-sm font-semibold ${colors.text.secondary}`}>Numéro</th>
+            <th className={`px-6 py-3 text-left text-sm font-semibold ${colors.text.secondary}`}>Nom</th>
+            <th className={`px-6 py-3 text-left text-sm font-semibold ${colors.text.secondary}`}>Téléphone</th>
+            <th className={`px-6 py-3 text-left text-sm font-semibold ${colors.text.secondary}`}>Actions</th>
+          </tr>
+        </thead>
+        <tbody className="bg-gray-50 divide-y divide-gray-200">
+          {patients.map((p) => (
+            <PatientRow key={p.id} patient={p} onEdit={onEdit} onDelete={onDelete} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const patientFormTutorial = (
+  <div>
+    {/* ...identique à ta version précédente... */}
+  </div>
+);
+
+export default function Patients() {
+  const { patients, loading, error, load, search, remove } = usePatients();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedPatientId, setSelectedPatientId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const onEdit = (id) => {
+    setSelectedPatientId(id);
+    setIsModalOpen(true);
+  };
+
+  const onAdd = () => {
+    setSelectedPatientId(null);
+    setIsModalOpen(true);
+  };
+
+  const onDelete = async (id) => {
+    if (await showConfirm('Voulez-vous vraiment supprimer ce patient ?')) {
+      try {
+        await remove(id);
+      } catch (err) {
+        console.log(err)
+      } finally {
+        load()
+      }
+    }
+
+  };
+
+  const onSearch = () => {
+    if (searchTerm.trim() === '') {
+      load();
+    } else {
+      search(searchTerm);
+    }
+  };
+
+  if (loading) return <p className={colors.text.primary}>Chargement...</p>;
+
+  return (
+    <div className={`p-6 rounded-xl ${colors.card.default}`}>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className={`text-2xl font-bold ${colors.text.dark}`}>Liste des patients</h2>
+
+        {/* Barre de recherche centrée */}
+        <div className="flex-1 flex justify-center">
+          <div className="flex">
+            <input
+              type="text"
+              placeholder="Rechercher..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-l-lg text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onSearch();
+              }}
+            />
+            <button
+              onClick={onSearch}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-r-lg"
+            >
+              <Search />
+            </button>
+          </div>
+        </div>
+
+        <button
+          onClick={onAdd}
+          className={`px-4 py-2 rounded-lg text-white ${colors.primary.button}`}
+        >
+          + Ajouter
+        </button>
+      </div>
+      <PatientsTable patients={patients} onEdit={onEdit} onDelete={onDelete} />
+
+      <ModalAnime
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={selectedPatientId ? 'Modifier le patient' : 'Ajouter un patient'}
+        valid={selectedPatientId ? 'Modifier' : 'Ajouter'}
+        tutorial={patientFormTutorial}
+      >
+        <PatientForm
+          patientId={selectedPatientId}
+          onClose={() => setIsModalOpen(false)}
+          onSuccess={() => {
+            setIsModalOpen(false);
+            load();
+          }}
+        />
+      </ModalAnime>
+    </div>
+  );
+}
+=== ./pages/RendezVous.jsx ===
+import React, { useState, useEffect, useCallback } from 'react';
+import { Edit, HelpCircle, RefreshCcw, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { fetchRdvs, deleteRdv, searchRdvByDate } from '@/controllers/rdvController';
+import RdvForm from '@/components/RdvForm';
+import { colors } from '@/theme';
+import ModalAnime from '@/components/ModalAnime';
+import { showConfirm, showToast } from '../utils/alerts';
+
+function useRdvs() {
+  const [rdvs, setRdvs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchRdvs();
+      setRdvs(data);
+    } catch (err) {
+      setError(err.message || 'Erreur lors du chargement.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const search = useCallback(async (date, heure) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await searchRdvByDate(date, heure);
+      setRdvs(data);
+      console.log(data);
+    } catch (err) {
+      setError(err.message || 'Erreur lors de la recherche.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const remove = useCallback(async (id) => {
+    try {
+      await deleteRdv(id);
+      setRdvs((prev) => prev.filter((r) => r.id !== id));
+      load();
+    } catch (err) {
+      throw new Error(err.message || 'Échec de la suppression.');
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return { rdvs, loading, error, load, remove, search };
+}
+
+const RdvRow = React.memo(function RdvRow({ rdv, onEdit, onDelete }) {
+  return (
+    <tr className="hover:bg-gray-50 transition">
+      <td className="px-6 py-4 text-sm text-gray-800">{rdv.patient}</td>
+      <td className="px-6 py-4 text-sm text-gray-800">{rdv.date}</td>
+      <td className="px-6 py-4 text-sm text-gray-800">{rdv.heureDeb}</td>
+      <td className="px-6 py-4 text-sm text-gray-800">{rdv.heureFin}</td>
+      <td className="px-6 py-4 text-sm text-gray-800">{rdv.medecin}</td>
+      <td className="px-6 py-4 flex space-x-2">
+        <button onClick={() => onEdit(rdv._id)} className="p-1 text-gray-400 hover:text-gray-400">
+          <Edit size={18} />
+        </button>
+        <button onClick={() => onDelete(rdv._id)} className="p-1 text-red-600 hover:text-red-800">
+          <Trash2 size={18} />
+        </button>
+      </td>
+    </tr>
+  );
+});
+
+function RdvsTable({ rdvs, onEdit, onDelete }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className={colors.primary.gradient}>
+          <tr>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Patient</th>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Date</th>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Heure Début</th>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Heure Fin</th>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Médecin</th>
+            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {rdvs.map((r) => (
+            <RdvRow key={r._id} rdv={r} onEdit={onEdit} onDelete={onDelete} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function RendezVous() {
+  const { rdvs, loading, error, load, remove, search } = useRdvs();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedRdvId, setSelectedRdvId] = useState(null);
+  const [searchDate, setSearchDate] = useState('');
+  const [searchHeure, setSearchHeure] = useState('');
+
+  const onEdit = (id) => {
+    setSelectedRdvId(id);
+    setIsModalOpen(true);
+  };
+
+  const onAdd = () => {
+    setSelectedRdvId(null);
+    setIsModalOpen(true);
+  };
+
+  const onDelete = async (id) => {
+    const conf = await showConfirm('Voulez-vous vraiment supprimer ce rendez-vous ?')  
+    if (conf) {
+      try {
+        await remove(id);
+        showToast("Rendez-vous supprimé avec succès")
+      } catch (err) {
+        console.log(err)
+      }
+    }
+
+  };
+  const [searchTerm, setSearchTerm] = useState('');
+  
+
+  const onFilter = () => {
+    search(searchDate, searchHeure)
+  };
+
+  const defaultTutorial = (
+    <div className="p-4">
+      <h3 className="font-semibold text-xl mb-4 text-gray-800">Comment Remplir le Formulaire</h3>
+      <p className="mb-6 text-gray-600">
+        Ce formulaire se complète étape par étape. Utilisez les boutons <span className="font-medium">"Précédent"</span>, <span className="font-medium">"Suivant"</span> et <span className="font-medium">"Annuler"</span> pour naviguer en toute simplicité. Pour toute aide, cliquez sur l’icône <HelpCircle className="inline w-4 h-4 text-gray-400" /> en haut à droite.
+      </p>
+  
+      <ol className="pl-6 space-y-5 text-gray-700 list-decimal">
+        <li>
+          <span className="font-semibold text-gray-700">Étape 1 : Sélection du Patient</span>
+          <p className="text-sm mt-1 text-gray-600">
+            - Sélectionnez un patient existant via le menu déroulant.<br />
+            - Pour un nouveau patient, cochez <span className="font-semibold">"Nouveau patient"</span> et renseignez :
+            <br />• Nom <br />• Numéro de sécurité sociale <br />• Numéro de téléphone
+          </p>
+        </li>
+  
+        <li>
+          <span className="font-semibold text-gray-700">Étape 2 : Date et Heure</span>
+          <p className="text-sm mt-1 text-gray-600">
+            - Choisissez la date de l’événement.<br />
+            - Indiquez l’heure de début et de fin.<br />
+            - Assurez-vous que les horaires sont cohérents.
+          </p>
+        </li>
+  
+        <li>
+          <span className="font-semibold text-gray-700">Étape 3 : Sélection du Médecin</span>
+          <p className="text-sm mt-1 text-gray-600">
+            - Choisissez un médecin dans la liste.<br />
+            - Chaque médecin est identifié par son matricule et sa spécialité.
+          </p>
+        </li>
+  
+        <li>
+          <span className="font-semibold text-gray-700">Étape 4 : Choix du Cabinet</span>
+          <p className="text-sm mt-1 text-gray-600">
+            - Sélectionnez le cabinet souhaité.<br />
+            - Les cabinets sont listés par nom et localisation.
+          </p>
+        </li>
+  
+        <li>
+          <span className="font-semibold text-gray-700">Étape 5 : Vérification et Soumission</span>
+          <p className="text-sm mt-1 text-gray-600">
+            - Relisez attentivement les informations saisies.<br />
+            - Cliquez sur <span className="font-semibold">"Valider" ou "Modifier</span> pour finaliser le formulaire.
+          </p>
+        </li>
+      </ol>
+  
+      <p className="mt-6 text-sm text-gray-400">
+        N’oubliez pas : vous pouvez toujours cliquer sur <span className="font-medium">"Annuler"</span> pour interrompre le processus à tout moment.
+      </p>
+    </div>
+  );
+  const onRefresh = () => {
+    load()
+  }
+
+  return (
+    <div className={`${colors.card.default} p-6 rounded-xl`}>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className={`text-xl font-bold ${colors.text.dark}`}>Liste Rendez-vous</h2>
+        {/* Filtres */}
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={searchDate}
+            onChange={(e) => setSearchDate(e.target.value)}
+            className="border px-3 py-2 rounded-lg text-sm"
+          />
+          <input
+            type="time"
+            value={searchHeure}
+            onChange={(e) => setSearchHeure(e.target.value)}
+            className="border px-3 py-2 rounded-lg text-sm"
+          />
+          <button
+            onClick={onFilter}
+            className="px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-400"
+          >
+            Filtrer
+          </button>
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            className="px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-400"
+          >
+            <RefreshCw/>
+          </button>
+        </div>
+
+          <div className="flex">
+            <input
+              type="text"
+              placeholder="Rechercher..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="px-3 py-2 border border-gray-200 rounded-l-lg text-sm focus:outline-none focus:ring-2 focus:ring-gray-400"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onFilter();
+              }}
+            />
+            <button
+              onClick={onFilter}
+              className="px-4 py-2 bg-gray-200 hover:bg-gray-200 text-gray-400 rounded-r-lg"
+            >
+              <Search />
+            </button>
+          </div>
+
+        <button
+          onClick={onAdd}
+          className={`px-4 py-2 rounded-lg text-white ${colors.primary.button}`}
+        >
+          + Ajouter
+        </button>
+      </div>
+
+      <RdvsTable rdvs={rdvs} onEdit={onEdit} onDelete={onDelete} />
+
+      <ModalAnime
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={selectedRdvId ? 'Modifier le Rendez-vous' : 'Ajouter un Rendez-vous'}
+        tutorial={defaultTutorial}
+      >
+        <RdvForm
+          rdvId={selectedRdvId}
+          onSuccess={() => {
+            setIsModalOpen(false);
+            load();
+          }}
+          onClose={() => setIsModalOpen(false)}
+        />
+      </ModalAnime>
+    </div>
+  );
+}
+=== ./services/api.js ===
+import axios from 'axios';
+import toast from 'react-hot-toast'; 
+import {  showError } from '../utils/alerts';
+
+const API_URL = import.meta.env.VITE_API_URL;
+
+const api = axios.create({
+  baseURL: API_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Intercepteur de réponse : gère toutes les erreurs API au même endroit
+api.interceptors.response.use(
+  response => response,
+  error => {
+    console.log(error);
+    if (error.response) {
+      const errors = error.response.data.errors;
+      let field = null;
+      let message = 'Une erreur est survenue.';
+    
+      if (errors?.email) {
+        field = 'email';
+        message = errors.email;
+      } else if (errors?.mdp) {
+        field = 'mdp';
+        message = errors.mdp;
+      } else if (error.response.data.message) {
+        message = error.response.data.message;
+      }
+    
+      showError(message); 
+    
+      const err = new Error(message);
+      err.field = field;
+      throw err;
+    } else if (error.request) {
+      const msg = 'Impossible de joindre le serveur. Vérifiez votre connexion.';
+      showError(msg);
+      throw new Error(msg);
+    } else {
+      const msg = error.message || 'Erreur inconnue.';
+      showError(msg);
+      throw new Error(msg);
+    }
+    
+  }
+);
+
+export default api;
+=== ./theme.js ===
+export const colors = {
+  primary: {
+    text: 'text-emerald-500',
+    gradient: 'bg-gradient-to-br from-emerald-50 to-emerald-100',
+    button: 'bg-emerald-600 hover:bg-emerald-500 focus:ring-emerald-500',
+    buttonDisabled: 'bg-emerald-300',
+  },
+  secondary: {
+    text: 'text-emerald-600',
+    icon: 'text-emerald-600',
+    gradient: 'bg-gradient-to-br from-emerald-100 to-white',
+  },
+  background: {
+    light: 'bg-white',
+    dark: 'bg-gray-900',
+  },
+  text: {
+    primary: 'text-gray-800',
+    secondary: 'text-gray-600',
+    light: 'text-gray-200',
+    dark: 'text-gray-900',
+  },
+  border: {
+    primary: 'border-gray-300',
+    secondary: 'border-gray-500',
+    focus: "focus-within:ring-emerald-500"
+  },
+  shadow: {
+    light: 'shadow-sm',
+    dark: 'shadow-xl',
+  },
+  alert: {
+    success: 'bg-green-100 text-green-800',
+    error: 'bg-red-100 text-red-800',
+    warning: 'bg-yellow-100 text-yellow-800',
+  },
+  card: {
+    default: 'bg-white rounded-xl shadow-md',
+    hover: 'bg-gray-50 shadow-lg',
+  },
+  badge: {
+    info: 'bg-emerald-500 text-white',
+    warning: 'bg-yellow-500 text-white',
+    error: 'bg-red-500 text-white',
+  },
+};
+=== ./utils/alerts.js ===
+import Swal from 'sweetalert2';
+
+// ✅ Alerte simple
+export const showAlert = (title, text, icon = 'info') => {
+  return Swal.fire({
+    title,
+    text,
+    icon,
+    confirmButtonText: 'OK',
+  });
+};
+
+// ✅ Alerte de confirmation avec retour booléen
+export const showConfirm = async (
+  title,
+  text,
+  confirmButtonText = 'Oui',
+  cancelButtonText = 'Annuler'
+) => {
+  const result = await Swal.fire({
+    title,
+    text,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText,
+    cancelButtonText,
+  });
+
+  return result.isConfirmed;
+};
+
+// ✅ Notification toast (en haut à droite)
+export const showToast = (message, icon = 'success') => {
+  return Swal.fire({
+    toast: true,
+    position: 'top-end',
+    icon,
+    title: message,
+    showConfirmButton: false,
+    timer: 3000,
+    timerProgressBar: true,
+  });
+};
+// ✅ Notification toast (en haut à droite)
+export const showToastErr = (message, icon = 'error') => {
+    return Swal.fire({
+      toast: true,
+      position: 'bottom',
+      icon,
+      title: message,
+      showConfirmButton: false,
+      timer: 3000,
+      timerProgressBar: true,
+    });
+  };
+  
+// ✅ Message d'erreur
+export const showError = (message = 'Une erreur est survenue.', title = 'Erreur') => {
+  return Swal.fire({
+    icon: 'error',
+    title,
+    text: message,
+    confirmButtonText: 'Fermer',
+  });
+};

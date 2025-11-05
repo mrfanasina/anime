@@ -1,0 +1,98 @@
+.anime-container {
+  max-width: 1000px;
+  margin: auto;
+  font-family: 'Arial', sans-serif;
+  color: #fff;
+}
+
+.anime-header {
+  position: relative;
+  height: 450px;
+  background-size: cover;
+  background-position: center;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.anime-title-glass {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  backdrop-filter: blur(12px);
+  background: rgba(0, 0, 0, 0.5);
+  padding: 20px;
+}
+
+.anime-title-glass h1 {
+  margin: 0;
+  font-size: 2.2rem;
+}
+
+.anime-title-glass p {
+  margin-top: 5px;
+  font-size: 1rem;
+  color: #f0f0f0;
+}
+
+.anime-description {
+  padding: 15px;
+  background: rgba(30, 30, 30, 0.8);
+  border-radius: 10px;
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+
+.season-buttons {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.season-buttons button {
+  padding: 10px 15px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.season-buttons button:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.season-buttons button.active {
+  background: #ff8c00;
+  color: #fff;
+}
+
+.episodes-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 15px;
+}
+
+.episode-card {
+  background: rgba(50, 50, 50, 0.8);
+  padding: 15px;
+  border-radius: 10px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.episode-card:hover {
+  background: rgba(70, 70, 70, 0.9);
+}
+
+.episode-name {
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.episode-date {
+  font-size: 0.85rem;
+  color: #ccc;
+}

@@ -1,0 +1,89 @@
+ahier des charges – Application Mobile Anime Media Server (Lecture et Transfert)
+Objectif
+Développer une application Android (Kotlin ou Java) permettant à l’utilisateur de :
+
+Parcourir la bibliothèque d’animés du serveur.
+Naviguer dans les saisons et épisodes.
+Lire un épisode en streaming ou le télécharger temporairement sur le téléphone.
+Déplacer une saison ou un animé du serveur vers le téléphone (et inversement).
+Gérer les animés saisonniers et la synchronisation locale.
+Fonctionnalités principales
+1. Connexion au serveur
+Connexion à l’API backend via une URL configurable.
+Vérification de la disponibilité du serveur au démarrage.
+2. Affichage et navigation
+Liste des animés, saisons, épisodes (comme un gestionnaire de fichiers).
+Filtre saisonnier, recherche par nom.
+3. Lecture locale et téléchargement
+Lecture en streaming : possibilité de lire un épisode directement depuis le serveur (API /stream ou /file).
+Téléchargement temporaire : bouton pour télécharger un épisode sur le téléphone (stockage local temporaire).
+Lecture locale : lecture du fichier téléchargé avec le lecteur vidéo du téléphone.
+4. Transfert de fichiers
+Télécharger une saison ou un animé complet : sélection et transfert de tous les épisodes sur le téléphone.
+Envoyer une saison ou un animé du téléphone vers le serveur : sélection de fichiers locaux et upload via l’API backend.
+Affichage de la progression du transfert et gestion des erreurs.
+5. Gestion des fichiers locaux
+Liste des animés/saisons/épisodes présents localement.
+Suppression ou déplacement des fichiers locaux.
+Synchronisation entre le serveur et le téléphone.
+6. Paramètres
+Configuration de l’URL du serveur.
+Gestion de l’espace de stockage local.
+Option pour rafraîchir la bibliothèque.
+Parcours utilisateur
+Accueil : Liste des animés (serveur et local).
+Animé/Saison sélectionné : Liste des épisodes.
+Épisode sélectionné :
+Bouton “Lire en streaming”
+Bouton “Télécharger sur le téléphone”
+Bouton “Lire localement” (si déjà téléchargé)
+Transfert :
+Bouton “Transférer la saison/l’animé sur le téléphone”
+Bouton “Envoyer vers le serveur”
+Gestion locale : Suppression, déplacement, organisation.
+Contraintes techniques
+Application native Android (Kotlin ou Java).
+Utilisation de Retrofit ou HttpURLConnection pour les appels API.
+Téléchargement de fichiers via HTTP (API /file ou /download).
+Upload de fichiers via HTTP (API /upload).
+Interface simple, responsive, adaptée aux mobiles.
+Gestion des erreurs réseau et stockage.
+Extensions possibles
+Historique de lecture locale et distante.
+Notifications lors de la fin de transfert ou de téléchargement.
+Mode hors-ligne pour les fichiers locaux.
+Sécurité et authentification.
+Résumé :
+L’application mobile permet de naviguer dans la bibliothèque d’animés du serveur, de lire ou télécharger des épisodes localement, de transférer des saisons ou animés entre le serveur et le téléphone, et de gérer les fichiers locaux, le tout via une interface native Android et des appels à l’API backend.
+
+7. Duel d’animés et classement Elo
+Fonctionnalités
+Duel d’animés :
+L’utilisateur peut lancer un duel entre deux animés de la bibliothèque.
+
+L’app affiche deux animés choisis aléatoirement ou par l’utilisateur.
+L’utilisateur vote pour son préféré.
+Le résultat du duel est envoyé au backend via une API dédiée (ex : /duel).
+Système Elo :
+Chaque animé possède un score Elo qui évolue selon les résultats des duels.
+
+Le backend calcule et met à jour le score Elo après chaque duel.
+L’app affiche le classement des animés selon leur score Elo.
+Possibilité de voir le top des animés, les progressions, etc.
+Parcours utilisateur
+Accès à la section Duel :
+
+Sélection ou affichage aléatoire de deux animés.
+Vote pour l’un des deux.
+Affichage du résultat et mise à jour du classement.
+Accès au classement :
+
+Liste des animés triés par score Elo.
+Affichage du score, du rang, et de l’évolution.
+Contraintes techniques
+API dédiée pour le duel (ex : POST /duel avec les IDs des animés et le gagnant).
+API pour récupérer le classement Elo (ex : GET /animes?sort=elo).
+Mise à jour du score Elo côté backend après chaque duel.
+Résumé :
+L’application mobile permet à l’utilisateur de comparer deux animés en duel, d’influencer leur classement via le système Elo, et de consulter le classement général des animés.
+Le backend gère la logique du score Elo et le stockage des résultats.
