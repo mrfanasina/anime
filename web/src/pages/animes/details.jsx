@@ -49,6 +49,42 @@ const AnimeDetails = () => {
   const [currentEpisode, setCurrentEpisode] = useState(null);
   const [optionLecture, setOptionLecture] = useState("Sur MPV")
   const navigate = useNavigate();
+  const [globalProgress, setGlobalProgress] = useState(0);
+  const [seasonProgress, setSeasonProgress] = useState({}); // progression par saison (grace aux episodes)
+  
+  //Mettre a jour la progression des saisons grace aux episodes (de leur position / duration)
+  useEffect(() => {
+    if (!anime) return;
+    //On recupere toute les episodes de chaque saison
+    const seasonProg = {};
+    anime.seasons.forEach(season => {
+      let totalEps = season.episodes.length;
+      let totalProgress = 0;
+      season.episodes.forEach(ep => {
+        const epProgress = ep.duration === 0 ? 0 : (ep.position / ep.duration) * 100;
+        totalProgress += epProgress;
+      });
+      const seasonProgress = totalEps === 0 ? 0 : Math.floor(totalProgress / totalEps);
+      seasonProg[season.id] = seasonProgress;
+    });
+    setSeasonProgress(seasonProg);
+    //Calcul de la progression globale
+    let allEps = 0;
+    let allProgress = 0;
+    anime.seasons.forEach(season => {
+      allEps += season.episodes.length;
+      allProgress += (seasonProgress[season.id] || 0) * season.episodes.length;
+    });
+    const globalProg = allEps === 0 ? 0 : Math.floor(allProgress / allEps);
+    setGlobalProgress(globalProg);
+  })
+
+  // Mettre à jour la progression globale grace aux episodes de tout les saisons, avec la progression de chaque saison
+  useEffect(() => {
+    if (!anime) return;
+    let totalEps = 0;
+    
+  }, [anime]);
   // Récuperation de l'user
   useEffect(() => {
     getCurrentUser().then(setUser);
@@ -61,6 +97,10 @@ const AnimeDetails = () => {
         
         const data = await getAnimeById(id, user?.id);
         setAnime(data);
+        console.log("**************************");
+        console.log(data);
+        console.log("**************************");
+        
         if (data.seasons?.length > 0) setSelectedSeasonId(data.seasons[0].id);
       } catch (err) {
         console.error("Erreur récupération anime :", err);
@@ -188,101 +228,17 @@ const AnimeDetails = () => {
       });
     };
 
-  // Met à jour UI + backend pour un épisode marqué vu
-  const markEpisodeWatchedOnBackend = async (episode, season) => {
-    // Optimistic UI update (local)
-    markEpisodeAsViewed(season.id, episode.id ?? `epnum-${episode.episode_number}`);
-
-    // Update anime state seasons -> episodes (match by id or episode_number)
-    setAnime((prev) => {
-      if (!prev) return prev;
-      const seasons = prev.seasons.map((s) => {
-        if (s.id !== season.id) return s;
-        return {
-          ...s,
-          episodes: s.episodes.map((ep) => {
-            const match =
-              (episode.id && ep.id === episode.id) ||
-              (!episode.id && ep.episode_number === episode.episode_number);
-            return match ? { ...ep, watched: true } : ep;
-          }),
-        };
-      });
-      return { ...prev, seasons };
-    });
-
-    // Mark in downloadable lists too
-    setDownloadableEpisodes((prev) =>
-      prev.map((ep) =>
-        ep.episode_number === episode.episode_number ? { ...ep, watched: true } : ep
-      )
-    );
-    setNextEpisodes((prev) =>
-      prev.map((ep) =>
-        ep.episode_number === episode.episode_number ? { ...ep, watched: true } : ep
-      )
-    );
-
-    // Persist to backend and refresh progress/state from backend for consistency
-    try {
-      const payload = {
-        user_id: user?.id,
-        anime_id: anime?.id,
-        season_id: season.id,
-        watched: true,
-      };
-      if (episode.id) payload.episode_id = episode.id;
-      else payload.episode_number = episode.episode_number;
-
-      // ensure we await the save
-      await addOrUpdateEpisode(payload);
-
-      // Re-fetch progress from backend and update all dependent UI pieces
-      if (user && anime) {
-        const refreshed = await getProgress(anime.id, user.id);
-        if (refreshed) {
-          setProgressData(refreshed);
-
-          // Rebuild viewedMap from refreshed progress (guarantees backend truth)
-          const newMap = {};
-          refreshed.seasons.forEach((s) => {
-            newMap[s.season_id] = new Set(s.watched_eps);
-          });
-          setViewedMap(newMap);
-
-          // Update anime.seasons episodes watched flags based on refreshed progress
-          setAnime((prev) => {
-            if (!prev) return prev;
-            const seasons = prev.seasons.map((s) => {
-              const progSeason = refreshed.seasons.find((ps) => ps.season_id === s.id);
-              if (!progSeason) return s;
-              const watchedSet = new Set(progSeason.watched_eps || []);
-              return {
-                ...s,
-                episodes: s.episodes.map((ep) => ({
-                  ...ep,
-                  watched: watchedSet.has(ep.id) || watchedSet.has(ep.episode_number),
-                })),
-              };
-            });
-            return { ...prev, seasons };
-          });
-        }
-      }
-    } catch (err) {
-      console.error("Erreur mise à jour watch :", err);
-      // Optionnel : rollback optimistic update si besoin
-    }
-  };
-
+  //Play dans le navigateur
+  const playInBrowser = (episode) => {
+    navigate(`/play/${episode.id}`);
+  }
+  
   // Play episode on backend 
   const handlePlayOnBackend = async (episode, season) => {
-    // Optimistic UI + lancement de la lecture
-    setCurrentEpisode(episode);
-    setIsPlaying(true);
-
-    // Await persistence and refresh to ensure UI shows updated progression immediately
-    await markEpisodeWatchedOnBackend(episode, season);
+      // Optimistic update : marque immédiatement l'épisode comme vu
+      markEpisodeAsViewed(season.id, episode.id);
+      setCurrentEpisode(episode);
+      setIsPlaying(true);
   }
 
   const handlePlayEpisode = async (episode, season) => {
@@ -314,112 +270,24 @@ const AnimeDetails = () => {
     showToast("Téléchargement lancé !");
   };
 
-  // Handle progress updates coming from PlayEpisodeModal (periodic + final)
-  const handlePlaybackProgress = async (episodeObj, data, isFinal) => {
-    // Update UI immediately (positions/duration/watched)
-    setAnime((prev) => {
-      if (!prev) return prev;
-      const seasons = prev.seasons.map((s) => {
-        return {
-          ...s,
-          episodes: s.episodes.map((ep) => {
-            const match =
-              (episodeObj.id && ep.id === episodeObj.id) ||
-              (!episodeObj.id && ep.episode_number === episodeObj.episode_number);
-            if (!match) return ep;
-            return {
-              ...ep,
-              position: data.position ?? ep.position,
-              duration: data.duration ?? ep.duration,
-              watched: data.ended ? true : ep.watched,
-            };
-          }),
-        };
-      });
-      return { ...prev, seasons };
-    });
+  //Recupérer la progression d'une saison grace aux episodes (position / duration)
+    //recuperer les episodes de la saison pour calculer la progression avec leur position / duration
+    const getSeasonProgress = (seasonId) => {
+      // Calculer la progression d'une saison uniquement à partir des progressions des épisodes (position / duration)
+      const season = anime?.seasons?.find((s) => s.id === seasonId);
+      if (!season || !season.episodes || season.episodes.length === 0) return 0;
 
-    // Update downloadable lists too
-    setDownloadableEpisodes((prev) =>
-      prev.map((ep) =>
-        ep.episode_number === episodeObj.episode_number
-          ? { ...ep, position: data.position ?? ep.position, duration: data.duration ?? ep.duration, watched: data.ended ? true : ep.watched }
-          : ep
-      )
-    );
-    setNextEpisodes((prev) =>
-      prev.map((ep) =>
-        ep.episode_number === episodeObj.episode_number
-          ? { ...ep, position: data.position ?? ep.position, duration: data.duration ?? ep.duration, watched: data.ended ? true : ep.watched }
-          : ep
-      )
-    );
-
-    // On final update or finished playback, persist and refresh progress from backend
-    if (isFinal || data.ended) {
-      try {
-        const seasonContaining = anime.seasons?.find((s) =>
-          s.episodes.some((ep) =>
-            (episodeObj.id && ep.id === episodeObj.id) ||
-            (!episodeObj.id && ep.episode_number === episodeObj.episode_number)
-          )
-        );
-
-        const payload = {
-          user_id: user?.id,
-          anime_id: anime?.id,
-          season_id: seasonContaining?.id ?? selectedSeasonId ?? null,
-          position: data.position ?? 0,
-          duration: data.duration ?? 0,
-          watched: !!data.ended,
-        };
-        if (episodeObj.id) payload.episode_id = episodeObj.id;
-        else payload.episode_number = episodeObj.episode_number;
-
-        await addOrUpdateEpisode(payload);
-
-        // refresh progress to update global and viewed sets
-        if (user && anime) {
-          const refreshed = await getProgress(anime.id, user.id);
-          if (refreshed) {
-            setProgressData(refreshed);
-            const newMap = {};
-            refreshed.seasons.forEach((s) => {
-              newMap[s.season_id] = new Set(s.watched_eps);
-            });
-            setViewedMap(newMap);
-
-            // Update anime.seasons episodes watched flags based on refreshed data
-            setAnime((prev) => {
-              if (!prev) return prev;
-              const seasons = prev.seasons.map((s) => {
-                const progSeason = refreshed.seasons.find((ps) => ps.season_id === s.id);
-                if (!progSeason) return s;
-                const watchedSet = new Set(progSeason.watched_eps || []);
-                return {
-                  ...s,
-                  episodes: s.episodes.map((ep) => ({
-                    ...ep,
-                    watched: watchedSet.has(ep.id) || watchedSet.has(ep.episode_number),
-                  })),
-                };
-              });
-              return { ...prev, seasons };
-            });
-          }
+      const totalProgress = season.episodes.reduce((acc, ep) => {
+        if (ep.duration && ep.duration > 0) {
+          const pct = (ep.position / ep.duration) * 100;
+          return acc + Math.max(0, Math.min(100, pct));
         }
-      } catch (err) {
-        console.error("Erreur sauvegarde progression :", err);
-      }
-    }
-  };
-  
-  const getSeasonProgress = (seasonId) => {
-    const s = progressData?.seasons?.find((x) => x.season_id === seasonId);
-    return s ? s.progress : 0;
-  };
+        return acc; // episode sans durée compte pour 0%
+      }, 0);
 
-  const globalProgress = progressData?.progress || 0;
+      return Math.floor(totalProgress / season.episodes.length);
+    };
+
 
   const getLanguageTags = (title) => {
     const tags = [];
@@ -479,7 +347,6 @@ const AnimeDetails = () => {
         episode={currentEpisode}
         isOpen={isPlaying}
         onClose={() => setIsPlaying(false)}
-        onProgress={handlePlaybackProgress} // <-- pass handler
       />
 
       <div className="pt-18 md:px-12 pb-10">
