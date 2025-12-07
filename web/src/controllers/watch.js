@@ -10,6 +10,16 @@ export async function getWatchList(userId) {
   console.log(res.data);
   return res.data;
 }
+// Récupère la watch ep list d'un watch season
+export async function getDejaVuEp(season_id) {
+  const res = await api.get(`watch/episode/${season_id}`);
+  if (res.status !== 200) {
+    const error = new Error(res.data.message || 'Erreur lors de la récupération de la watch list');
+    throw error;
+  }
+  return res.data;
+}
+
 
 // Toggle un épisode regardé
 export async function toggleEpisode(watchEpisodeId, watched) {
@@ -88,7 +98,6 @@ export async function getProgress(anime_id, user_id) {
       anime_id,
       user_id,
     });
-    console.log(data);
     return data;
   } catch (err) {
     console.error("Erreur lors de la récupération de la progression :", err);
@@ -111,5 +120,9 @@ export const markSeasonWatched = (season_id) =>
   api.post(`/watch/season/${season_id}/complete`);
 
 // 🔹 Marquer tout l’anime comme vu
-export const markAnimeWatched = (userId, animeId) =>
-  api.post(`/watch/anime/${userId}/${animeId}/complete`);
+export const markAnimeWatched = (userId, animeId) => {
+    api.post(`/watch/complete/anime`, {
+      "user_id": userId, 
+      "anime_id": animeId}
+    );
+}

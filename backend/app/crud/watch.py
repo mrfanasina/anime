@@ -18,6 +18,7 @@ def create_watch(db: Session, user_id: int, payload: WatchCreate) -> Watch:
     db.add(watch)
     db.flush()  # pour avoir watch.id
 
+        
     # saisons + épisodes si fournis
     if payload.seasons:
         for s in payload.seasons:

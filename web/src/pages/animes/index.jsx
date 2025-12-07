@@ -7,6 +7,7 @@ import AnimeCard from "../../components/AnimeCard";
 import { addWatch } from "../../controllers/watch";
 import { showToast } from "../../utils/alerts";
 import { getCurrentUser } from "../../controllers/auth";
+import AddAnime from "../../components/AddAnime";
 
 const AnimePage = () => {   
   const [animes, setAnimes] = useState([]);
@@ -75,7 +76,7 @@ const AnimePage = () => {
   return (
     <div style={{ backgroundColor: bgColor, minHeight: "100vh", color: textColor }}>
       <TopBar />
-
+      <AddAnime/>
       <div className="pt-28 p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         {loading && Array.from({ length: 10 }).map((_, i) => <SkeletonCard key={i} />)}
         {!loading && error && (

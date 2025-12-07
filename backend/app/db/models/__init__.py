@@ -3,3 +3,5 @@ from .anime import Anime
 from .watch import Watch
 from .watch_season import WatchSeason
 from .watch_episode import WatchEpisode
+from .season import Season
+from .episode import Episode

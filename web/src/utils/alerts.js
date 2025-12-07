@@ -63,6 +63,7 @@ export const showConfirmInf = async (
       confirmButton: `px-4 m-4 py-2 rounded-lg text-white bg-emerald-500`,
     },
     buttonsStyling: false,
+    timer: 4000,
     background: isDarkMode ? '#1f1f1f' : '#fff',
     color: isDarkMode ? '#fff' : '#000',
   });

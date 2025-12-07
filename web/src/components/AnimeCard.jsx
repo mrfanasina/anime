@@ -20,7 +20,6 @@ export default function AnimeCard({
   const [isDark, setIsDark] = useState(
     window.matchMedia("(prefers-color-scheme: dark)").matches
   );
-  console.log(primaryColors)
   useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const handleChange = (e) => setIsDark(e.matches);
@@ -83,12 +82,12 @@ export default function AnimeCard({
         <div className="flex justify-center gap-2 pb-3">
           {showReadButton && (
             <button
-              style={{ backgroundColor: primaryColors.main,color: textColor }}
+              style={{ backgroundColor: primaryColors.main + "90",color: textColor }}
               onClick={(e) => {
                 e.stopPropagation();
                 onRead && onRead(anime);
               }}
-              className="flex items-center gap-1 text-white px-3 py-1.5 rounded-full text-sm shadow-md transition"
+              className="flex items-center gap-1 px-3 py-1.5 rounded-full text-sm shadow-md transition"
             >
               <Play size={16} /> Lire
             </button>
@@ -96,12 +95,12 @@ export default function AnimeCard({
 
           {showWatchButton && (
             <button
-              style={{ backgroundColor: secondaryColors.main,color: textColor }}
+              style={{ backgroundColor: primaryColors.accent + "90",color: textColor }}
               onClick={(e) => {
                 e.stopPropagation();
                 onAddWatch && onAddWatch(anime);
               }}
-              className={`flex items-center gap-1 text-white px-3 py-1.5 rounded-full text-sm shadow-md transition`}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm shadow-md transition`}
             >
               <Plus size={16} /> Watch-list
             </button>

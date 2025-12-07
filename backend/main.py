@@ -11,7 +11,7 @@ from app.utils.mount import mount_hdd, mount_other_disks
 from app import sync
 from app.routers import (
     auth, home, anime, season, episode,
-    stats, player, watch, sync as sync_routes
+    stats, player, watch, sync as sync_routes, downloader as downloader_router
 )
 
 # === Initialisation de la base ===
@@ -40,7 +40,7 @@ app.include_router(player.router, prefix="/player", tags=["Player"])
 app.include_router(sync_routes.router, prefix="/sync", tags=["Sync"])
 app.include_router(watch.router, prefix="/watch", tags=["Watch"])
 app.include_router(home.router, prefix="/home", tags=["Home"])
-
+app.include_router(downloader_router.router, prefix="/download", tags=["Downloader"])
 
 def get_args():
     """Analyse les arguments de ligne de commande."""

@@ -7,6 +7,9 @@ from .anime import AnimeBase
 from .season import SeasonBase
 from .episode import EpisodeBase
 
+class WatchAnimeComplet(BaseModel):
+    user_id: int
+    anime_id: int
 
 # ===========================
 # WatchEpisode
@@ -106,6 +109,7 @@ class WatchProgressRequest(BaseModel):
 
 
 class WatchSeasonProgress(BaseModel):
+    watch_season_id: Optional[int]
     season_id: int
     progress: int
 

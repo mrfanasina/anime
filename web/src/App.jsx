@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { useSelector, useDispatch } from "react-redux";
 import { setMode } from "./redux/themeSlice";
@@ -7,6 +7,8 @@ import AnimeDetails from './pages/animes/details.jsx';
 import Login from './pages/login/index.jsx';
 import SignUp from './pages/sign-up/index.jsx';
 import NotFound from './pages/not-found/index.jsx';
+import { getCurrentUser } from './controllers/auth.js';
+import PlayPage from './pages/animes/play.jsx';
 
 const HomePage = React.lazy(() => import('./pages/home/index.jsx'))
 const AnimePage = React.lazy(() => import('./pages/animes/index.jsx'))
@@ -15,6 +17,7 @@ const WatchListPage = React.lazy(() => import('./pages/watchlist/index.jsx'))
 const SeasonalPage = React.lazy(() => import('./pages/seasonal/index.jsx'))
 
 const App = () => {
+  const [currentUser, setCurrentUser] = useState(null);
   const mode = useSelector((state) => state.theme.mode);
   const isUserPreference = useSelector((state) => state.theme.isUserPreference);
   const dispatch = useDispatch();
@@ -23,7 +26,15 @@ const App = () => {
   useEffect(() => {
     document.body.classList.toggle("dark", mode === "dark");
   }, [mode]);
-
+  
+  // 🔹 Charger l'utilisateur connecté
+  useEffect(() => {
+    async function fetchUser() {
+      const user = await getCurrentUser();
+      setCurrentUser(user);
+    }
+    fetchUser();
+  }, []);
   // Listen to system theme changes and update mode when user hasn't set a preference
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -60,6 +71,11 @@ const App = () => {
     <Router>
       <Routes>
         <Route path="/" element={
+          <Suspense fallback={<Loader/>}>
+            {currentUser ? <HomePage/> : <Login /> }              
+          </Suspense>
+        } />
+        <Route path="/home" element={
           <Suspense fallback={<Loader/>}>
             <HomePage />
           </Suspense>
@@ -99,6 +115,11 @@ const App = () => {
             <SignUp/>
           </Suspense>
         }/>
+        <Route path="/play/:episodeId" element={
+          <Suspense fallback={<Loader/>}>
+            <PlayPage />
+          </Suspense>
+        } />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Router>

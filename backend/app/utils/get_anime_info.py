@@ -8,6 +8,7 @@ from sqlalchemy.exc import NoResultFound
 import re
 import logging
 import time
+import socket
 
 logging.basicConfig(level=logging.INFO)
 
@@ -150,7 +151,39 @@ def update_anime_info_in_db(db: Session, anime_id: int, info: dict):
         logging.error(f"Erreur lors de la mise à jour de {anime_id}: {e}")
         db.rollback()
 
+        
+def get_episode_count_from_anilist(anime_title: str, default: int = 24) -> int:
+    """Récupère le nombre d'épisodes via AniList, ou renvoie un nombre par défaut en cas d'erreur réseau."""
+    url = "https://graphql.anilist.co"
+    query = """
+    query ($search: String) {
+      Media(search: $search, type: ANIME) {
+        episodes
+      }
+    }
+    """
+    variables = {"search": anime_title}
 
+    try:
+        # Vérifie si on a Internet avant même la requête
+        socket.gethostbyname("graphql.anilist.co")
+
+        response = requests.post(url, json={"query": query, "variables": variables}, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+
+        episodes = data.get("data", {}).get("Media", {}).get("episodes")
+        if episodes:
+            return episodes
+
+        print(f"[INFO] Aucun nombre d'épisodes trouvé sur AniList pour {anime_title}. Utilisation du défaut {default}.")
+        return default
+
+    except (socket.gaierror, requests.exceptions.RequestException):
+        # Pas d'accès Internet, DNS, timeout, etc.
+        print(f"[WARN] AniList inaccessible — utilisation du nombre d'épisodes par défaut : {default}")
+        return default
+    
 if __name__ == "__main__":
     db = SessionLocal()
     try:

@@ -5,7 +5,7 @@ from app.db.session import SessionLocal
 from app.schemas.watch import (
     WatchCreate, WatchOut, WatchProgressResponse, WatchUpdate,
     WatchSeasonCreate, WatchSeasonOut,
-    WatchEpisodeCreate, WatchEpisodeOut, WatchProgressRequest
+    WatchEpisodeCreate, WatchEpisodeOut, WatchProgressRequest, WatchAnimeComplet
 )
 from app.crud import watch as crud_watch
 from app.crud import watch_season as crud_wseason
@@ -130,7 +130,7 @@ def patch_watch_episode(watch_episode_id: int, payload: WatchEpisodeCreate = Bod
 def delete_watch_episode(watch_episode_id: int, db: Session = Depends(get_db)):
     return crud_wep.delete_watch_episode(db, watch_episode_id)
 
-@router.post("/progress", response_model=WatchProgressResponse)
+@router.post("/progress")
 def get_watch_progress(payload: WatchProgressRequest, db: Session = Depends(get_db)):
     watch = crud_watch.get_watch_by_user_anime(db, payload.user_id, payload.anime_id)
     if not watch:
@@ -143,7 +143,7 @@ def get_watch_progress(payload: WatchProgressRequest, db: Session = Depends(get_
 
     for s in seasons:
         # Tous les épisodes de la saison (pas seulement ceux regardés)
-        all_episodes = crud_wep.get_all_episodes_for_season(db, s.season_id)  # à implémenter
+        all_episodes = crud_wep.get_all_episodes_for_season(db, s.season_id) 
         watched_episodes = crud_wep.get_episodes_by_watch_season(db, s.id)
 
         season_total = len(all_episodes)
@@ -153,14 +153,20 @@ def get_watch_progress(payload: WatchProgressRequest, db: Session = Depends(get_
 
         total_episodes += season_total
         total_watched += watched_count
-
+        watched_episode_ids = [ep.episode_id for ep in watched_episodes]
+        
         season_progress.append({
+            "season_watch_id": s.id,
             "season_id": s.season_id,
-            "progress": progress
+            "progress": progress,
+            "watched_eps": watched_episode_ids      
         })
 
     anime_progress = round((total_watched / total_episodes) * 100) if total_episodes > 0 else 0
 
+    if anime_progress > 100:
+        anime_progress = 100
+        
     return {
         "anime_id": payload.anime_id,
         "progress": anime_progress,
@@ -171,6 +177,6 @@ def get_watch_progress(payload: WatchProgressRequest, db: Session = Depends(get_
 def complete_watch_season(watch_season_id: int, db: Session = Depends(get_db)):
     return crud_wseason.complete_watch_season(db, watch_season_id)
 
-@router.post("anime/{user_id}/{anime_id}/complete", response_model=WatchOut)
-def complete_watch_anime(user_id: int, anime_id: int, db: Session = Depends(get_db)):
-    return crud_watch.complete_watch_anime(db, user_id, anime_id)
+@router.post("/complete/anime", response_model=WatchOut)
+def complete_watch_anime(payload: WatchAnimeComplet, db: Session = Depends(get_db)):
+    return crud_watch.complete_watch_anime(db, payload.user_id, payload.anime_id)

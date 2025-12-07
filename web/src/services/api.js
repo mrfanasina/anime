@@ -15,7 +15,6 @@ api.interceptors.request.use(config => {
   const storage = localStorage.getItem('authToken') ? localStorage : sessionStorage;
 
   const token = storage.getItem('authToken')  ;
-  console.log('Token:', token);
   if (token) {
     config.headers.Authorization = `Bearer ${token}`; // Ajouter le token dans les headers
   }

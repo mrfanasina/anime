@@ -5,6 +5,9 @@ from fastapi import HTTPException, status
 from app.db.models.watch_season import WatchSeason
 from app.db.models.watch_episode import WatchEpisode
 from app.db.models.watch import Watch
+from app.db.models.episode import Episode
+from app.crud.watch_episode import create_watch_episode
+from app.db.models.season import Season
 
 # CREATE
 def create_watch_season(db: Session, watch_id: int, season_id: int, completed: bool = False) -> WatchSeason:
@@ -73,14 +76,11 @@ def complete_watch_season(db: Session, watch_season_id: int):
         raise HTTPException(status_code=404, detail="WatchSeason introuvable")
 
     # Récupérer tous les épisodes liés à cette WatchSeason
-    episodes = db.query(WatchEpisode).filter_by(season_id=ws.id).all()
-
+    episodes = db.query(Episode).filter_by(season_id=ws.season_id).all()
+    
     # Marquer tous les épisodes comme vus
-    now = datetime.now()
     for ep in episodes:
-        ep.watched = True
-        ep.watched_at = now
-
+        create_watch_episode(db=db, watch_season_id=watch_season_id, episode_id=ep.id, watched=True)
     # Marquer la saison comme complétée
     ws.completed = True
 

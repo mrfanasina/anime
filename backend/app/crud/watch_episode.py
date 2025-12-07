@@ -11,11 +11,12 @@ def create_watch_episode(db: Session, watch_season_id: int, episode_id: int, wat
     # éviter doublons pour le même épisode dans la même watch_season
     existing = db.query(WatchEpisode).filter_by(season_id=watch_season_id, episode_id=episode_id).first()
     if existing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Episode déjà dans la season")
+        update_watch_episode(db=db, watch_episode_id=existing.id, watched=True)
     we = WatchEpisode(season_id=watch_season_id, episode_id=episode_id, watched=watched, watched_at=datetime.datetime.now() if watched else None)
     db.add(we)
     db.commit()
     db.refresh(we)
+    print(we.episode_id)
     return we
 
 # READ

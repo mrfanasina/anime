@@ -12,3 +12,4 @@ class Episode(Base):
     path = Column(String(500), nullable=False)  # <-- Ajoute cette ligne
     modified_time = Column(DateTime)
     season = relationship("Season", back_populates="episodes")
+    

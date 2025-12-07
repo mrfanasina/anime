@@ -4,3 +4,4 @@ from .watch import (
     WatchSeasonBase, WatchSeasonCreate, WatchSeasonOut, WatchSeasonUpdate,
     WatchEpisodeBase, WatchEpisodeCreate, WatchEpisodeOut, WatchEpisodeUpdate
 )
+from .downloader import DownloadRequest

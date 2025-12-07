@@ -19,7 +19,7 @@ import { getCurrentUser } from '../controllers/auth';
 import api from '../services/api';
 
 const navLinks = [
-  { to: '/', label: 'Home' },
+  { to: '/home', label: 'Home' },
   { to: '/anime', label: 'Animes' },
   { to: '/duel', label: 'Duel' },
   { to: '/watch-list', label: 'Watch-List' },
@@ -97,7 +97,7 @@ export default function TopBar() {
     sessionStorage.removeItem('authToken');
     sessionStorage.removeItem('currentUser');
     setCurrentUser(null);
-    navigate('/');
+    navigate('/login');
   };
 
   const handleKeyDown = (e) => {
@@ -141,7 +141,7 @@ export default function TopBar() {
                 textShadow: '0 0 10px rgba(0,0,0,0.2)',
               }}
             >
-              Anime<span className="text-gray-400">Verse</span>
+              Anime<span style={{ color: primaryColors.accent }}>Verse</span>
             </h2>
           </Link>
 

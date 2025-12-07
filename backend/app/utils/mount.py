@@ -1,27 +1,7 @@
 import subprocess
 import os
 import json
-
-def find_media_folders():
-    """
-    Liste les points de montage et vérifie la présence des dossiers ANIME, animes, ANIMES, MANGA.
-    Retourne un dictionnaire {point_de_montage: [dossiers_trouvés]}
-    """
-    folders_to_check = ["ANIME", "animes", "ANIMES", "MANGA"]
-    found = {}
-
-    with open("/proc/mounts", "r") as f:
-        mounts = [line.split()[1] for line in f.readlines()]
-    for mount_point in mounts:
-        try:
-            items = os.listdir(mount_point)
-            matches = [folder for folder in folders_to_check if folder in items]
-            if matches:
-                found[mount_point] = matches
-        except Exception:
-            continue
-
-    return found
+from app.utils.folder import find_media_folders
 
 
 def mount_hdd():

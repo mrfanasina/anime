@@ -42,6 +42,11 @@ export default function HomePage() {
               data: res.data.newEpisodes || [],
             },
             {
+              title: "Continuer",
+              icon: <Plus size={20} />,
+              data: res.data.finished || [],
+            },
+            {
               title: "Top notés",
               icon: <Star size={20} />,
               data: res.data.topRated || [],
@@ -50,11 +55,6 @@ export default function HomePage() {
               title: "Pas encore commencés",
               icon: <BookOpen size={20} />,
               data: res.data.notWatched || [],
-            },
-            {
-              title: "Récommencer",
-              icon: <Plus size={20} />,
-              data: res.data.finished || [],
             },
           ]);
         } else {
