@@ -10,6 +10,7 @@ from app.schemas.watch import (
 from app.crud import watch as crud_watch
 from app.crud import watch_season as crud_wseason
 from app.crud import watch_episode as crud_wep
+from app.crud import anime as crud_anime
 
 router = APIRouter()
 
@@ -91,6 +92,18 @@ def add_or_update_watch_episode(payload: WatchEpisodeCreate, db: Session = Depen
     Ajoute un épisode à une watch.
     Si la watch ou la saison n'existe pas, elle sera créée automatiquement.
     """
+    print(f"Adding watch episode: user_id={payload.user_id}, episode_id={payload.episode_id}, season_id={payload.season_id}, watched={payload.watched}")
+    # Récupérer automatiquement anime_id
+    anime_id = payload.anime_id
+    if anime_id is None:
+        anime_id = crud_anime.get_anime_id_by_episode(db, payload.episode_id)
+        if anime_id is None:
+            raise HTTPException(400, "Impossible de retrouver l'anime depuis episode_id")
+    print(f"anime_id = {anime_id}")
+
+    # Et corrige le payload en interne
+    payload.anime_id = anime_id
+
     # Vérifier si watch existe pour l'anime
     watch = crud_watch.get_watch_by_user_anime(db, payload.user_id, payload.anime_id)
     if not watch:
@@ -113,9 +126,9 @@ def add_or_update_watch_episode(payload: WatchEpisodeCreate, db: Session = Depen
 
     return episode
 
-@router.get("/episode/{watch_episode_id}", response_model=WatchEpisodeOut)
-def get_watch_episode(watch_episode_id: int, db: Session = Depends(get_db)):
-    return crud_wep.get_watch_episode(db, watch_episode_id)
+@router.get("/episode", response_model=WatchEpisodeOut)
+def get_watch_episode(payload: WatchEpisodeCreate, db: Session = Depends(get_db)):
+    return crud_wep.get_watch_episode(db, )
 
 @router.patch("/episode/{watch_episode_id}", response_model=WatchEpisodeOut)
 def patch_watch_episode(watch_episode_id: int, payload: WatchEpisodeCreate = Body(...), db: Session = Depends(get_db)):

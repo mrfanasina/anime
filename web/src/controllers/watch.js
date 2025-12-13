@@ -120,9 +120,17 @@ export const markSeasonWatched = (season_id) =>
   api.post(`/watch/season/${season_id}/complete`);
 
 // 🔹 Marquer tout l’anime comme vu
-export const markAnimeWatched = (userId, animeId) => {
+export const markAnimeWatched = async (userId, animeId) => {
     api.post(`/watch/complete/anime`, {
       "user_id": userId, 
       "anime_id": animeId}
     );
+}
+
+export const addWatchEpisode = async (userId, episode_id, watched=false) => {
+  api.post(`/watch/episode`, {
+    "user_id": userId, 
+    "episode_id": episode_id,
+    "watched": watched,
+  });
 }

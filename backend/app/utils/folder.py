@@ -1,25 +1,41 @@
 from app.db.session import SessionLocal
 from app.db.models import Anime, Season
 import os
+import os
+
+FOLDERS_TO_CHECK = {"anime", "animes", "manga", "movies", "movie", "ova"}
 
 def find_media_folders():
     """
-    Liste les points de montage et vérifie la présence des dossiers ANIME, animes, ANIMES, MANGA.
-    Retourne un dictionnaire {point_de_montage: [dossiers_trouvés]}
+    Analyse les points de montage et détecte les dossiers intéressants.
+    Retourne un dict : { "/mnt/sdX" : ["anime", "manga"] }
     """
-    folders_to_check = ["ANIME", "animes", "ANIMES", "MANGA"]
     found = {}
 
-    with open("/proc/mounts", "r") as f:
-        mounts = [line.split()[1] for line in f.readlines()]
+    try:
+        with open("/proc/mounts", "r") as f:
+            mounts = [line.split()[1] for line in f]
+    except Exception:
+        return {}
+
     for mount_point in mounts:
         try:
             items = os.listdir(mount_point)
-            matches = [folder for folder in folders_to_check if folder in items]
-            if matches:
-                found[mount_point] = matches
         except Exception:
             continue
+
+        # normalisation lowercase
+        normalized_items = {item.lower(): item for item in items}
+
+        # on garde les noms d'origine pour éviter d'écraser les majuscules
+        matches = [
+            normalized_items[name]
+            for name in FOLDERS_TO_CHECK
+            if name in normalized_items
+        ]
+
+        if matches:
+            found[mount_point] = matches
 
     return found
 

@@ -1,160 +1,155 @@
 import requests
-from bs4 import BeautifulSoup
-from app.db.models.anime import Anime
-from app.db.session import SessionLocal
 from sqlalchemy.orm import Session
-from typing import Optional
-from sqlalchemy.exc import NoResultFound
-import re
+from app.db.models.anime import Anime
+from app.db.models.genre import Genre
+from app.db.session import SessionLocal
 import logging
-import time
 import socket
+import time
 
 logging.basicConfig(level=logging.INFO)
 
-def get_anime_info(anime_name: str) -> Optional[dict]:
-    """
-    Récupère les informations d'un animé depuis MyAnimeList.
-    Retourne un dictionnaire complet avec titre, image, note, description, etc.
-    """
-    base_url = "https://myanimelist.net"
-    search_url = f"{base_url}/anime.php?q={requests.utils.quote(anime_name)}&cat=anime"
+ANILIST_GRAPHQL_URL = "https://graphql.anilist.co"
+GOOGLE_TRANSLATE_URL = "https://translate.googleapis.com/translate_a/single"
 
+
+# --------------------- Traduction ---------------------
+def translate_text(text: str, target_lang="fr") -> str:
     try:
-        response = requests.get(search_url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        params = {
+            "client": "gtx",
+            "sl": "auto",
+            "tl": target_lang,
+            "dt": "t",
+            "q": text
+        }
+        response = requests.get(GOOGLE_TRANSLATE_URL, params=params, timeout=5)
         response.raise_for_status()
-    except requests.RequestException as e:
-        logging.error(f"Erreur lors de la requête vers MyAnimeList: {e}")
-        return None
+        return response.json()[0][0][0]
+    except:
+        return text
 
-    soup = BeautifulSoup(response.text, 'html.parser')
 
-    # Trouver le premier lien d’aniget_anime_infomé valide
-    first_result = soup.select_one("a.hoverinfo_trigger.fw-b")
-    if not first_result:
-        logging.warning(f"Aucun résultat trouvé pour {anime_name}")
-        return None
-
-    anime_page_url = first_result["href"]
-
-    # Charger la page de l’animé
+# --------------------- JIKAN ---------------------
+def get_anime_info_jikan(title: str) -> dict:
+    url = f"https://api.jikan.moe/v4/anime?q={title}&limit=1"
     try:
-        anime_response = requests.get(anime_page_url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-        anime_response.raise_for_status()
-    except requests.RequestException as e:
-        logging.error(f"Erreur lors de la requête vers la page de l'animé {anime_name}: {e}")
-        return None
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
 
-    anime_soup = BeautifulSoup(anime_response.text, "html.parser")
+        data = r.json().get("data", [])
+        if not data:
+            return {}
 
-    try:
-        #  Nom
-        title = anime_soup.select_one("h1.title-name, h1.h1_bold_none").text.strip()
+        anime = data[0]
 
-        #  Score (note moyenne)
-        score_tag = anime_soup.select_one("div.score-label")
-        score = float(score_tag.text.strip()) if score_tag and score_tag.text.strip() != "N/A" else None
+        synopsis = anime.get("synopsis")
+        if synopsis:
+            synopsis = translate_text(synopsis)
 
-        #  Image
-        image_tag = anime_soup.select_one("img[itemprop='image']")
-        image_url = image_tag.get("data-src") or image_tag.get("src") if image_tag else None
-
-        #  Description
-        description_tag = anime_soup.select_one("p[itemprop='description']")
-        description = description_tag.text.strip() if description_tag else None
-
-        #  Type, Statut, Studio, Date, Rank
-        info_map = {
-            "Type:": None,
-            "Status:": None,
-            "Studios:": None,
-            "Premiered:": None,
-            "Ranked:": None
-        }
-
-        for span in anime_soup.select("span.dark_text"):
-            label = span.text.strip()
-            if label in info_map:
-                next_node = span.next_sibling
-                if not next_node or isinstance(next_node, str):
-                    next_node = span.find_next_sibling(text=True)
-                if label == "Ranked:":
-                    rank_match = re.search(r"#(\d+)", str(next_node))
-                    info_map[label] = int(rank_match.group(1)) if rank_match else None
-                else:
-                    info_map[label] = str(next_node).strip()
-
-        anime_type = info_map["Type:"]
-        status = info_map["Status:"]
-        studio = info_map["Studios:"]
-        premiered = info_map["Premiered:"]
-        rank = info_map["Ranked:"]
-
-        #  Extraire l’année de création
-        year = None
-        if premiered:
-            match = re.search(r"(\d{4})", premiered)
-            if match:
-                year = match.group(1)
-
-        #  Résumé propre
         return {
-            "title": title,
-            "score": score,
-            "image_url": image_url,
-            "description": description,
-            "type": anime_type,
-            "status": status,
-            "studio": studio,
-            "created_at": year,
-            "rank": rank
+            "title": anime.get("title"),
+            "title_english": anime.get("title_english"),
+            "title_nihon": anime.get("title_japanese"),
+            "synopsis": synopsis,
+            "type": anime.get("type"),
+            "status": anime.get("status"),
+            "studio": ", ".join([s["name"] for s in anime.get("studios", [])]),
+            "created_at": anime.get("year"),
+            "note": anime.get("score"),
+            "rank": anime.get("rank"),
+            "image_url": anime.get("images", {}).get("jpg", {}).get("large_image_url"),
+            "genres": [g["name"] for g in anime.get("genres", [])],
+            "episodes": anime.get("episodes")
         }
 
     except Exception as e:
-        logging.error(f"Erreur lors de l’extraction des données de {anime_name}: {e}")
-        return None
+        logging.error(f"[JIKAN] Erreur pour {title}: {e}")
+        return {}
 
-def update_all_anime_info():
+
+# --------------------- AniList ---------------------
+def get_anime_info_anilist(title: str) -> dict:
+    query = """
+    query ($search: String) {
+      Media(search: $search, type: ANIME) {
+        title { romaji english native }
+        description
+        episodes
+        format
+        status
+        studios { nodes { name } }
+        startDate { year }
+        averageScore
+        genres
+        rankings { rank }
+        coverImage { large }
+      }
+    }
     """
-    Met à jour tout les animes depuis mal
-    """
-    db = Session
+
     try:
-        animes = db.query(Anime).all()
-        for anime in animes: 
-            print(anime.id)
+        socket.gethostbyname("graphql.anilist.co")
+
+        r = requests.post(
+            ANILIST_GRAPHQL_URL,
+            json={"query": query, "variables": {"search": title}},
+            timeout=10
+        )
+        r.raise_for_status()
+
+        data = r.json().get("data", {}).get("Media", {})
+        if not data:
+            return {}
+
+        desc = data.get("description")
+        if desc:
+            desc = translate_text(desc)
+
+        return {
+            "title": data.get("title", {}).get("romaji"),
+            "title_english": data.get("title", {}).get("english"),
+            "title_nihon": data.get("title", {}).get("native"),
+            "description": desc,
+            "type": data.get("format"),
+            "status": data.get("status"),
+            "studio": ", ".join([s["name"] for s in data.get("studios", {}).get("nodes", [])]),
+            "created_at": data.get("startDate", {}).get("year"),
+            "note": data.get("averageScore"),
+            "rank": data.get("rankings")[0]["rank"] if data.get("rankings") else None,
+            "image_url": data.get("coverImage", {}).get("large"),
+            "genres": data.get("genres") or [],
+            "episodes": data.get("episodes")
+        }
+
     except Exception as e:
-        print("exp",e)
-        
-def update_anime_info_in_db(db: Session, anime_id: int, info: dict):
-    """
-    Met à jour les informations d’un animé dans la base de données.
-    """
-    try:
-        anime = db.query(Anime).filter_by(id=anime_id).first()
-        if not anime:
-            logging.warning(f"Animé introuvable dans la base: {anime_id}")
-            return
+        logging.error(f"[AniList] Erreur pour {title}: {e}")
+        return {}
 
-        anime.image_url = info.get("image_url", anime.image_url)
-        anime.description = info.get("description", anime.description)
-        anime.type = info.get("type", anime.type)
-        anime.status = info.get("status", anime.status)
-        anime.rank = info.get("rank", anime.rank)
-        anime.note = info.get("score", anime.note)
-        anime.studio = info.get("studio", anime.studio)
-        anime.created_at = info.get("created_at", anime.created_at)
 
-        db.commit()
-        logging.info(f" Informations mises à jour: {anime.name}")
-    except Exception as e:
-        logging.error(f"Erreur lors de la mise à jour de {anime_id}: {e}")
-        db.rollback()
+# --------------------- Fusion (RESTORÉE !) ---------------------
+def get_anime_info(title: str) -> dict:
+    """Fusion ANIList + Jikan pour compatibilité."""
+    info_anilist = get_anime_info_anilist(title)
+    info_jikan = get_anime_info_jikan(title)
 
-        
-def get_episode_count_from_anilist(anime_title: str, default: int = 24) -> int:
-    """Récupère le nombre d'épisodes via AniList, ou renvoie un nombre par défaut en cas d'erreur réseau."""
-    url = "https://graphql.anilist.co"
+    merged = {}
+
+    merged.update(info_jikan)
+    merged.update(info_anilist)
+
+    merged["description"] = info_anilist.get("description") or info_jikan.get("synopsis")
+    merged["synopsis"] = info_jikan.get("synopsis")
+
+    merged["genres"] = list(
+        set((info_anilist.get("genres") or []) + (info_jikan.get("genres") or []))
+    )
+
+    return merged
+
+
+# --------------------- Episodes AniList (RESTORÉE !) ---------------------
+def get_episode_count_from_anilist(title: str, default=24) -> int:
     query = """
     query ($search: String) {
       Media(search: $search, type: ANIME) {
@@ -162,39 +157,96 @@ def get_episode_count_from_anilist(anime_title: str, default: int = 24) -> int:
       }
     }
     """
-    variables = {"search": anime_title}
-
     try:
-        # Vérifie si on a Internet avant même la requête
-        socket.gethostbyname("graphql.anilist.co")
+        r = requests.post(
+            ANILIST_GRAPHQL_URL,
+            json={"query": query, "variables": {"search": title}},
+            timeout=8
+        )
+        r.raise_for_status()
 
-        response = requests.post(url, json={"query": query, "variables": variables}, timeout=5)
-        response.raise_for_status()
-        data = response.json()
+        eps = r.json().get("data", {}).get("Media", {}).get("episodes")
+        return eps if eps else default
 
-        episodes = data.get("data", {}).get("Media", {}).get("episodes")
-        if episodes:
-            return episodes
-
-        print(f"[INFO] Aucun nombre d'épisodes trouvé sur AniList pour {anime_title}. Utilisation du défaut {default}.")
+    except:
         return default
 
-    except (socket.gaierror, requests.exceptions.RequestException):
-        # Pas d'accès Internet, DNS, timeout, etc.
-        print(f"[WARN] AniList inaccessible — utilisation du nombre d'épisodes par défaut : {default}")
-        return default
-    
-if __name__ == "__main__":
+
+# --------------------- Mise à jour DB ---------------------
+def update_anime_info_in_db(db: Session, anime: Anime, info_anilist: dict, info_jikan: dict):
+    print(f"   ➡️ MAJ {anime.name}")
+    print(f"      AniList: {info_anilist}")
+    print(f"      Jikan: {info_jikan}")
+    try:
+        # TITRES
+        for key, attr in {
+            "title": "title_romaji",
+            "title_english": "title_english",
+            "title_nihon": "title_nihon"
+        }.items():
+            if info_anilist.get(key):
+                setattr(anime, attr, info_anilist[key])
+            elif info_jikan.get(key):
+                setattr(anime, attr, info_jikan[key])
+
+        # DESCRIPTION
+        if info_anilist.get("description"):
+            anime.description = info_anilist["description"]
+        elif info_jikan.get("synopsis"):
+            anime.description = info_jikan["synopsis"]
+
+        # SYNOPSIS
+        if info_jikan.get("synopsis"):
+            anime.synopsis = info_jikan["synopsis"]
+
+        # AUTRES CHAMPS
+        for key in ["type", "status", "studio", "created_at", "note", "rank", "image_url", "episodes"]:
+            if info_anilist.get(key) is not None:
+                setattr(anime, key, info_anilist[key])
+            elif info_jikan.get(key) is not None:
+                setattr(anime, key, info_jikan[key])
+
+        # GENRES
+        genres = set((info_anilist.get("genres") or []) + (info_jikan.get("genres") or []))
+
+        for g in genres:
+            g = g.strip()
+            if not g:
+                continue
+
+            genre = db.query(Genre).filter_by(name=g).first()
+            if not genre:
+                genre = Genre(name=g)
+                db.add(genre)
+                db.commit()
+                db.refresh(genre)
+
+            if genre not in anime.genres:
+                anime.genres.append(genre)
+
+        db.commit()
+
+    except Exception as e:
+        logging.error(f"Erreur MAJ {anime.name}: {e}")
+        db.rollback()
+
+
+# --------------------- MAJ GLOBAL ---------------------
+def update_all_anime_info():
     db = SessionLocal()
+
     try:
         animes = db.query(Anime).all()
+
         for anime in animes:
-            logging.info(f" Récupération des informations pour: {anime.name}")
-            info = get_anime_info(anime.name)
-            if info:
-                update_anime_info_in_db(db, anime.id, info)
-            else:
-                logging.info(f"Aucune info trouvée pour: {anime.name}")
-            time.sleep(2)  # pour ne pas spammer MyAnimeList
+            print(f"🔎 {anime.name}")
+
+            info_anilist = get_anime_info_anilist(anime.name)
+            info_jikan = get_anime_info_jikan(anime.name)
+
+            update_anime_info_in_db(db, anime, info_anilist, info_jikan)
+
+            time.sleep(1.5)
+
     finally:
         db.close()

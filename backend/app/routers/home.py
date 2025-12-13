@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.db.session import get_db
+from app.crud.anime import get_recently_watched
 
 router = APIRouter()
 
@@ -36,23 +37,28 @@ def get_home_data(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="user_id est requis")
 
     # 🔁 Animés en cours (progress < 100%), triés par dernier watched_at
-    continue_watching_query = text("""
+    continue_watching_query_backup = text("""
         SELECT 
             a.id AS id,
-            a.name ,
+            a.name AS name,
             a.image_url AS image_url,
-            ROUND(SUM(CASE WHEN we.watched THEN 1 ELSE 0 END) / NULLIF(COUNT(we.id),0) * 100, 1) AS progress,
-            MAX(we.watched_at) AS last_watched
+            we_last.last_watched
         FROM animes a
         JOIN watch_list w ON w.anime_id = a.id AND w.user_id = :user_id
-        JOIN watch_seasons ws ON ws.watch_id = w.id
-        JOIN watch_episodes we ON we.season_id = ws.id
-        GROUP BY a.id
-        HAVING (SUM(CASE WHEN we.watched THEN 1 ELSE 0 END) / NULLIF(COUNT(we.id),0) * 100) < 100
-        ORDER BY last_watched DESC
-        LIMIT 10
+        JOIN (
+            SELECT w2.anime_id, MAX(we.watched_at) AS last_watched
+            FROM watch_list w2
+            JOIN watch_seasons ws ON ws.watch_id = w2.id
+            JOIN watch_episodes we ON we.season_id = ws.id
+            WHERE we.watched = TRUE
+            GROUP BY w2.anime_id
+        ) AS we_last ON we_last.anime_id = a.id
+        ORDER BY we_last.last_watched DESC
+        LIMIT 10;
+
     """)
 
+    continue_watching_query = get_recently_watched(db, user_id)
     # 🆕 Nouveaux épisodes disponibles (ex: status='new')
     new_episodes_query = text("""
         SELECT 
@@ -106,7 +112,7 @@ def get_home_data(user_id: int, db: Session = Depends(get_db)):
     """)
 
     # ⚙️ Exécution des requêtes
-    continue_watching = [dict(row._mapping) for row in db.execute(continue_watching_query, {"user_id": user_id})]
+    continue_watching = continue_watching_query
     new_episodes = [dict(row._mapping) for row in db.execute(new_episodes_query)]
     top_rated = [dict(row._mapping) for row in db.execute(top_rated_query)]
     not_watched = [dict(row._mapping) for row in db.execute(not_watched_query, {"user_id": user_id})]
@@ -119,3 +125,34 @@ def get_home_data(user_id: int, db: Session = Depends(get_db)):
         "notWatched": not_watched,
         "finished": finished,
     }
+@router.get("/last-viewed/{user_id}")
+def get_last_viewed_anime_by_watch_ep(user_id: int, db: Session = Depends(get_db)):
+    """
+    Récupère le dernier animé visionné par un utilisateur en se basant sur watch_episodes. Avec l'episode vu et la suite possible.
+    """
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id est requis")
+
+    query = text("""
+        SELECT 
+            a.id AS id,
+            a.name AS name,
+            a.image_url AS image_url,
+            we.watched_at AS last_watched
+        FROM animes a
+        JOIN watch_list w ON w.anime_id = a.id AND w.user_id = :user_id
+        JOIN watch_seasons ws ON ws.watch_id = w.id
+        JOIN watch_episodes we ON we.season_id = ws.id
+        WHERE we.watched = TRUE
+        ORDER BY we.watched_at DESC
+        LIMIT 1
+    """)
+
+    animes_viewed = db.execute(query, {"user_id": user_id}).first()
+    result = [
+       ""        
+    ]
+    if result:
+        return {"lastViewedAnime": dict(result._mapping)}
+    else:
+        return {"lastViewedAnime": None}

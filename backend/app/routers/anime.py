@@ -10,6 +10,7 @@ from app.db.models.watch_season import WatchSeason
 from app.db.models.watch import Watch
 from app.utils.get_anime_info import get_anime_info, update_anime_info_in_db
 from app.utils.folder import find_media_folders
+from app.crud.anime import get_all_animes, get_anime_details
 import logging
 import os
 
@@ -25,7 +26,17 @@ def get_db():
         yield db
     finally:
         db.close()
-
+# -------------------------
+# Tous les animes
+# -------------------------
+@router.get("/")
+def get_animes():
+    db = SessionLocal()
+    try:
+        animes = get_all_animes(db)
+        return animes
+    finally:
+        db.close()
 
 # -------------------------
 # Liste complète des animés avec saisons et épisodes
@@ -68,6 +79,7 @@ def list_animes_full():
                 "elo": anime.elo,
                 "image_url": anime.image_url or "",
                 "description": anime.description or "",
+                "synopsis": anime.synopsis,
                 "note": anime.note,
                 "status": anime.status or "",
                 "type": anime.type or "",
@@ -79,7 +91,6 @@ def list_animes_full():
         return result
     finally:
         db.close()
-
 
 # -------------------------
 # Recherche d'un animé
@@ -97,144 +108,15 @@ def search_anime(query: str = Query(..., min_length=2)):
     finally:
         db.close()
 
-
 # -------------------------
 # Détails complet d’un animé avec progression utilisateur
 # -------------------------
 @router.get("/with-progress/{anime_id}")
-def get_anime_details(anime_id: int, userId: int | None = None):
-    """
-    Récupère un anime avec ses saisons et épisodes.
-    Si user_id est fourni, inclut la progression par épisode et la progression globale.
-    """
-    print(f"id = {userId}")
+def get_anime_with_progress(anime_id: int, userId: int = Query(None)):
+    """Detail complet d'un anime"""
     db = SessionLocal()
-    try:
-        anime = db.query(Anime).filter_by(id=anime_id).first()
-        if not anime:
-            return {"error": "Anime introuvable"}
-
-        seasons = db.query(Season).filter_by(anime_id=anime.id).all()
-
-        result = {
-            "test": userId,
-            "id": anime.id,
-            "name": anime.name,
-            "elo": anime.elo,
-            "path": anime.path,
-            "seasons": [],
-            "image_url": anime.image_url or "",
-            "description": anime.description or "",
-            "note": anime.note,
-            "status": anime.status or "",
-            "type": anime.type or "",
-            "rank": anime.rank,
-            "created_at": anime.created_at or "",
-            "studio": anime.studio or "",
-            "progress": 0  # progress global initialisé à 0
-        }
-
-        # -------------------------
-        # Cas utilisateur non connecté
-        # -------------------------
-        if not userId:
-            for season in seasons:
-                episodes = db.query(Episode).filter_by(season_id=season.id).all()
-                result["seasons"].append({
-                    "id": season.id,
-                    "name": season.name,
-                    "season_number": season.season_number,
-                    "episodes": [
-                        {
-                            "id": ep.id,
-                            "name": ep.name,
-                            "path": ep.path,
-                            "episode_number": ep.episode_number
-                        }
-                        for ep in episodes
-                    ]
-                })
-            return result
-
-        # -------------------------
-        # Cas utilisateur connecté → récupérer Watch
-        # -------------------------
-        user_watch = db.query(Watch).filter_by(user_id=userId, anime_id=anime.id).first()
-        total_eps = 0
-        watched_eps = 0
-
-        for season in seasons:
-            episodes = db.query(Episode).filter_by(season_id=season.id).all()
-            season_data = {
-                "id": season.id,
-                "name": season.name,
-                "season_number": season.season_number,
-                "episodes": []
-            }
-
-            # Récupérer WatchSeason si existant
-            ws = None
-            if user_watch:
-                ws = db.query(WatchSeason).filter_by(watch_id=user_watch.id, season_id=season.id).first()
-
-            for ep in episodes:
-                total_eps += 1
-                if ws:
-                    we = db.query(WatchEpisode).filter_by(
-                        season_id=ws.id, episode_id=ep.id
-                    ).first()
-                    if we:
-                        ep_data = {
-                            "id": ep.id,
-                            "name": ep.name,
-                            "path": ep.path,
-                            "episode_number": ep.episode_number,
-                            "position": we.position,
-                            "duration": we.duration,
-                            "watched": we.watched,
-                            "finished": we.finished,
-                            "watched_at": we.watched_at
-                        }
-                        if we.watched:
-                            watched_eps += 1
-                    else:
-                        ep_data = {
-                            "id": ep.id,
-                            "name": ep.name,
-                            "path": ep.path,
-                            "episode_number": ep.episode_number,
-                            "position": 0,
-                            "duration": 0,
-                            "watched": False,
-                            "finished": False,
-                            "watched_at": None
-                        }
-                else:
-                    ep_data = {
-                        "id": ep.id,
-                        "name": ep.name,
-                        "path": ep.path,
-                        "episode_number": ep.episode_number,
-                        "position": 0,
-                        "duration": 0,
-                        "watched": False,
-                        "finished": False,
-                        "watched_at": None
-                    }
-
-                season_data["episodes"].append(ep_data)
-
-            result["seasons"].append(season_data)
-
-        # Calcul de la progression globale
-        result["progress"] = round((watched_eps / total_eps) * 100) if total_eps > 0 else 0
-
-        return result
-
-    finally:
-        db.close()
-
-
+    a = get_anime_details(db=db, anime_id=anime_id,user_id=userId)
+    return a
 # -------------------------
 # Ajout d'un animé
 # -------------------------
@@ -253,7 +135,6 @@ def add_anime(name: str = Body(...), path: str = Body(...)):
         return {"message": "Anime ajouté", "anime": {"id": anime.id, "name": anime.name}}
     finally:
         db.close()
-
 
 # -------------------------
 # Suppression d’un animé
@@ -315,12 +196,44 @@ def update_anime_info(anime_id: int):
 @router.get("/seasonal/with-season-name")
 def get_seasonal():
     db = SessionLocal()
-    try: 
-        seasonal_animes = db.query(SeasonalAnime).all()
-        
+    try:
+        # On récupère toutes les entrées seasonal
+        seasonal_records = db.query(SeasonalAnime).all()
+
+        # Dictionnaire regroupé par "season_name"
+        seasonal_map = {}
+
+        for entry in seasonal_records:
+            anime = db.query(Anime).filter_by(id=entry.anime_id).first()
+            if not anime:
+                continue
+
+            season_name = entry.season_name
+
+            if season_name not in seasonal_map:
+                seasonal_map[season_name] = {
+                    "season_name": season_name,
+                    "animes": []
+                }
+
+            seasonal_map[season_name]["animes"].append({
+                "id": anime.id,
+                "anime_id": anime.id,
+                "name": anime.name,
+                "image_url": anime.image_url or "",
+                "description": anime.description or "",
+                "elo": anime.elo,
+                "rank": anime.rank,
+                "note": anime.note,
+                "status": anime.status,
+                "studio": anime.studio,
+            })
+
+        # Retourner sous forme de liste
+        return list(seasonal_map.values())
+
     finally:
-        db.close        
-    
+        db.close()
 
 # -------------------------
 # Récupérer dossiers médias

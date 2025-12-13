@@ -80,7 +80,7 @@ def complete_watch_season(db: Session, watch_season_id: int):
     
     # Marquer tous les épisodes comme vus
     for ep in episodes:
-        create_watch_episode(db=db, watch_season_id=watch_season_id, episode_id=ep.id, watched=True)
+        create_watch_episode(db=db, watch_season_id=watch_season_id, episode_id=ep.id, watched=True,finished=True)
     # Marquer la saison comme complétée
     ws.completed = True
 

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.crud import anime as anime_crud
 from app.crud import seasonal as seasonal_crud
-from app.utils.mount import find_media_folders
+from app.utils.folder import find_media_folders
 
 # ------------------ Synchronisation principale ------------------
 def sync_all_disks():
@@ -20,28 +20,68 @@ def sync_all_disks():
             if not os.path.exists(folder_path):
                 continue
 
+            normalized = folder.lower()
+            # ---------------- MOVIES ----------------
+            if normalized in ("movie", "movies"):
+                print(f"🎬 Synchronisation MOVIES : {folder_path}")
+                sync_movies(db, folder_path)
+                continue
+
+            # ---------------- OVA ----------------
+            if normalized == "ova":
+                print(f"📀 Synchronisation OVA : {folder_path}")
+                sync_ova(db, folder_path)
+                continue
+
+
+            # ---------------- ANIME CLASSIQUE ----------------
             for item_name in os.listdir(folder_path):
                 item_path = os.path.join(folder_path, item_name)
                 if not os.path.isdir(item_path):
                     continue
-
-                # Dossier saisonnier
+                # ---------------- DOSSIERS SAISONNIERS ----------------
                 if item_name.startswith('#'):
-                    print(f"📂 Synchronisation saisonniers trouvée : {item_path}")
+                    print(f"📂 Synchronisation saisonniers trouvée : {folder_path}")
                     sync_seasonal_animes(db, item_path)
                     continue
 
-                # Anime classique
                 anime = anime_crud.get_or_create_anime(db, item_name, item_path, force_update=True)
                 sync_anime_files(item_path, anime, db, force_update=True)
 
-    db.commit()
-    db.close()
-    print("✅ Synchronisation terminée.")
+        db.commit()
+        db.close()
+        print("✅ Synchronisation terminée.")
 
 # ------------------ Synchronisation des fichiers ------------------
 def sync_anime_files(anime_path: str, anime, db: Session, force_update=False):
-    """Synchronise les épisodes d'un anime (classique ou saisonnier)."""
+    """Synchronise les épisodes d'un anime et marque introuvables ceux qui ont disparu."""
+    
+    # 📌 1. Récupère tous les fichiers vidéo existants sur le disque
+    existing_files = []
+    for root, _, files in os.walk(anime_path):
+        for file in files:
+            if anime_crud.is_video_file(file):
+                full_path = os.path.join(root, file)
+                existing_files.append(os.path.abspath(full_path))
+
+    # 📌 Convertir en set pour comparaison rapide
+    existing_files_set = set(existing_files)
+
+    # 📌 2. Récupère tous les épisodes enregistrés en base
+    db_episodes = anime_crud.get_all_episodes_for_anime(db, anime.id)
+
+    # 📌 3. Marquer les épisodes absents comme "not_found = True"
+    for ep in db_episodes:
+        if ep.path and os.path.abspath(ep.path) not in existing_files_set:
+            if not ep.not_found:  # éviter les commits inutiles
+                ep.not_found = True
+                print(f"⚠️ Épisode introuvable : {ep.path}")
+        else:
+            # S'il existe toujours sur le disque → not_found = False
+            if ep.not_found:
+                ep.not_found = False
+
+    # 📌 4. Ensuite synchroniser normalement (mise à jour des fichiers existants)
     for root, _, files in os.walk(anime_path):
         relative = os.path.relpath(root, anime_path)
         season_name = "Saison 1" if relative == "." else relative
@@ -53,6 +93,88 @@ def sync_anime_files(anime_path: str, anime, db: Session, force_update=False):
                 anime_crud.get_or_create_episode(db, season, file, file_path, force_update=force_update)
 
     db.commit()
+
+# ------------------ Synchronisation des films ------------------
+def sync_movies(db: Session, movies_root: str):
+    """
+    Synchronise tous les films dans le dossier movie/movies.
+    Chaque fichier vidéo devient un anime de type 'movie'.
+    """
+    for item in os.listdir(movies_root):
+        item_path = os.path.join(movies_root, item)
+
+        # 📌 Cas 1 : fichiers vidéos directement dans /movies
+        if os.path.isfile(item_path) and anime_crud.is_video_file(item):
+            anime_name = os.path.splitext(item)[0]  # nom sans extension
+            print(f"🎬 Film détecté : {anime_name}")
+            
+            anime = anime_crud.get_or_create_anime(
+                db,
+                anime_name,
+                item_path,
+                force_update=True,
+                type="movie"
+            )
+
+            season = anime_crud.get_or_create_season(db, anime, "Film")
+            anime_crud.get_or_create_episode(db, season, item, item_path, force_update=True)
+
+        # 📌 Cas 2 : sous-dossier = un film
+        elif os.path.isdir(item_path):
+            anime_name = item
+            print(f"🎬 Film en dossier : {anime_name}")
+
+            anime = anime_crud.get_or_create_anime(
+                db,
+                anime_name,
+                item_path,
+                force_update=True,
+                type="movie"
+            )
+
+            # saison unique "Film"
+            sync_anime_files(item_path, anime, db, force_update=True)
+
+# ------------------ Synchronisation des OVA ------------------
+def sync_ova(db: Session, ova_root: str):
+    """
+    Synchronisation des OVA.
+    Même logique que les movies mais type = 'ova'.
+    """
+    for item in os.listdir(ova_root):
+        item_path = os.path.join(ova_root, item)
+
+        # OVA direct en fichier
+        if os.path.isfile(item_path) and anime_crud.is_video_file(item):
+            anime_name = os.path.splitext(item)[0]
+            print(f"📀 OVA détecté : {anime_name}")
+
+            anime = anime_crud.get_or_create_anime(
+                db,
+                anime_name,
+                item_path,
+                force_update=True,
+                type="ova"
+            )
+
+            season = anime_crud.get_or_create_season(db, anime, "OVA")
+            anime_crud.get_or_create_episode(db, season, item, item_path, force_update=True)
+
+        # OVA dans un dossier
+        elif os.path.isdir(item_path):
+            anime_name = item
+            print(f"📀 OVA dossier : {anime_name}")
+
+            anime = anime_crud.get_or_create_anime(
+                db,
+                anime_name,
+                item_path,
+                force_update=True,
+                type="ova"
+            )
+
+            sync_anime_files(item_path, anime, db, force_update=True)
+
 
 # ------------------ Synchronisation saisonniers ------------------
 def sync_seasonal_animes(db: Session, saisonnier_root: str):

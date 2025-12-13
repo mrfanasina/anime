@@ -3,6 +3,10 @@ from app.db.models.anime import Anime
 from app.db.models.seasonal import SeasonalAnime
 import re
 
+#Recuperer tous les saisonniers avec les noms de saison
+def get_all_seasonal(db: Session):
+    return db.query(SeasonalAnime).all()
+
 def get_or_create_seasonal(db: Session, anime: Anime, season_name: str, force_update=False) -> SeasonalAnime:
     # Extrait season_type et year
     season_type, year = parse_season_name(season_name)

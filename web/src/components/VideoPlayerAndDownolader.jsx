@@ -389,7 +389,7 @@ const VideoPlayerWithHeader = ({ episodeId, apiUrl, animeName }) => {
 
                 {/* Overlay des Contrôles (Affichage conditionnel) */}
                 <div
-                    className={`absolute bottom-0 left-0 right-0 transition-opacity duration-300 z-30 ${
+                    className={`absolute bottom-0 left-0 p-3 right-0 transition-opacity duration-300 z-30 ${
                         showControls || !isPlaying || isSeeking ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-full'
                     } flex flex-col`}
                     style={{ 
@@ -421,7 +421,7 @@ const VideoPlayerWithHeader = ({ episodeId, apiUrl, animeName }) => {
                         
                         {/* Curseur (Drag Handle) */}
                         <div 
-                            className={`absolute -top-1 w-4 h-4 rounded-full transition-all duration-150 transform -translate-x-1/2 ${
+                            className={`absolute w-4 h-4 rounded-full transition-all duration-150 transform -translate-x-1/2 ${
                                 isSeeking ? 'scale-150' : 'group-hover:scale-125'
                             }`}
                             style={{ 
@@ -471,7 +471,7 @@ const VideoPlayerWithHeader = ({ episodeId, apiUrl, animeName }) => {
                                     value={volume}
                                     onChange={handleVolumeChange}
                                     // La barre de volume est visible au hover sur le groupe
-                                    className="w-16 h-1 appearance-none cursor-pointer transition-all duration-200 sm:opacity-0 sm:group-hover/volume:opacity-100 sm:group-focus-within/volume:opacity-100"
+                                    className="w-16 h-1 cursor-pointer transition-all duration-200 sm:opacity-0 sm:group-hover/volume:opacity-100 sm:group-focus-within/volume:opacity-100"
                                     style={{ accentColor: accentColor }}
                                 />
                             </div>

@@ -1,7 +1,6 @@
 import subprocess
 import os
 import json
-from app.utils.folder import find_media_folders
 
 
 def mount_hdd():
@@ -68,19 +67,12 @@ def mount_other_disks():
 
 
 def main():
-    print("🔧 Montage du disque principal (LDM)...")
-    mount_hdd()
 
     print("\n💽 Recherche et montage des autres disques...")
     mount_other_disks()
-
-    print("\n🎬 Recherche de dossiers médias...")
-    found = find_media_folders()
-    if found:
-        for path, folders in found.items():
-            print(f"📁 {path} → {folders}")
-    else:
-        print("Aucun dossier média trouvé.")
+    
+    print("🔧 Montage du disque principal (LDM)...")
+    mount_hdd()
 
 
 if __name__ == "__main__":

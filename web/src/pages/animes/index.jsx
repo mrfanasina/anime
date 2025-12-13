@@ -23,7 +23,7 @@ const AnimePage = () => {
   // Charger les animés et l'utilisateur actuel
   useEffect(() => {
     api
-      .get("/anime/all")
+      .get("/anime/")
       .then((res) => setAnimes(res.data))
       .catch(() => setError("Impossible de charger les animés"))
       .finally(() => setLoading(false));

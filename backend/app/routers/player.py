@@ -33,6 +33,7 @@ def get_db():
 # ============================================================
 @router.get("/play/{episode_id}")
 async def play_episode(episode_id: int, db: Session = Depends(get_db), userId: int = None):
+    viewed_threshold = 92  # secondes
 
     # -----------------------------------------------------------------
     # 1. Vérifier épisode
@@ -117,7 +118,12 @@ async def play_episode(episode_id: int, db: Session = Depends(get_db), userId: i
         if watch_episode:
             watch_episode_id = watch_episode.id
 
-    start_time = watch_episode.position if watch_episode else 0
+    start_time = 0
+    if watch_episode and watch_episode.position:
+        # Reset to 0 if position is close to duration (episode already watched)
+        if abs(watch_episode.position - watch_episode.duration) > viewed_threshold:
+            start_time = watch_episode.position
+            
 
     # -----------------------------------------------------------------
     # 4. Lancer MPV
@@ -139,7 +145,6 @@ async def play_episode(episode_id: int, db: Session = Depends(get_db), userId: i
     # 5. SSE STREAM : progression + end-file
     # -----------------------------------------------------------------
     async def event_stream():
-
         while not os.path.exists(socket_path):
             await asyncio.sleep(0.1)
 
@@ -210,7 +215,9 @@ async def play_episode(episode_id: int, db: Session = Depends(get_db), userId: i
                     wp = db2.query(WatchEpisode).filter_by(id=watch_episode_id).first()
                     if wp:
                         wp.duration = duration
-                        wp.finished = True
+                        if not wp.finished:
+                            print(wp.episode)
+                            wp.finished = abs(pos - duration) < viewed_threshold
                         wp.watched = True
                         wp.watched_at = datetime.utcnow()
                         db2.commit()
