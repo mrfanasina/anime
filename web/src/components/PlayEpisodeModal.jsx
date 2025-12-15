@@ -1,177 +1,246 @@
-import React, { useEffect, useState } from "react";
-import { X } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+// Remplacer X par une icône plus pertinente pour la lecture/playlist
+import { X, List, PlayCircle, Loader } from "lucide-react"; 
 import { useSelector } from "react-redux";
 import { showToast } from "../utils/alerts";
-import { playAnime } from "../controllers/anime";
+import { playAnimePlaylist } from "../controllers/anime";
 
-const PlayEpisodeModal = ({ 
-    isOpen, 
-    onClose, 
-    userId, 
-    selectedEpisodes = [],  // ← LISTE D'ÉPISODES
-    onProgress 
+/**
+ * Props:
+ * - isOpen
+ * - onClose
+ * - userId
+ * - selectedEpisodes (ARRAY ORDERED) // Assumer que chaque épisode a aussi une 'series_name'
+ * - onProgress(episode, progress, silent)
+ */
+const PlayEpisodeModal = ({
+  seriesName = "Série Inconnue",
+  isOpen,
+  onClose,
+  userId,
+  selectedEpisodes = [],
+  onProgress
 }) => {
+  // ... (Pas de changement dans les états/références)
+  const [currentEpisodeId, setCurrentEpisodeId] = useState(null);
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
 
-    const [currentIndex, setCurrentIndex] = useState(0);     // quel épisode joue ?
-    const [position, setPosition] = useState(0);
-    const [duration, setDuration] = useState(0);
-    const [ended, setEnded] = useState(false);
-    const [source, setSource] = useState(null);
+  const currentEpisodeRef = useRef(null);
+  const sseRef = useRef(null);
+  const startedRef = useRef(false);
 
-    const currentEpisode = selectedEpisodes[currentIndex];
-    const { primaryColors } = useSelector((state) => state.theme);
-    const mainColor = primaryColors.main;
+  const { primaryColors } = useSelector((state) => state.theme);
+  const mainColor = primaryColors.main;
+  // ... (Logique useEffect pour la synchronisation et la SSE - inchangée)
 
-    /* ────────────────────────────────────────────────────────────────
-       1) Lancer la lecture SSE quand l'épisode change
-    ───────────────────────────────────────────────────────────────── */
-    useEffect(() => {
-        if (!isOpen || !currentEpisode?.id) return;
+  // Sync current episode ref
+  useEffect(() => {
+    currentEpisodeRef.current =
+      selectedEpisodes.find((e) => e.id === currentEpisodeId) || null;
+  }, [currentEpisodeId, selectedEpisodes]);
 
-        const sse = playAnime(currentEpisode.id, (data) => {
-            if (data.ended) {
-                setEnded(true);
-                setPosition(data.position || 0);
-                setDuration(data.duration || 0);
+  // Start playlist ONCE per open
+  useEffect(() => {
+    if (!isOpen || selectedEpisodes.length === 0) return;
 
-                // notifier parent
-                onProgress &&
-                    onProgress(currentEpisode, {
-                        position: data.position || 0,
-                        duration: data.duration || 0,
-                        ended: true,
-                    }, true);
+    if (startedRef.current) return; // prevent multiple SSE
+    startedRef.current = true;
+    console.log("PlayEpisodeModal opened, starting playlist...", selectedEpisodes);
+    const episodeIds = selectedEpisodes.map((e) => e.id);
+    console.log("Starting playlist SSE for episodes:", episodeIds);
+    const sse = playAnimePlaylist(episodeIds, userId, (data) => {
+      switch (data.type) {
+        case "episode-change":
+          setCurrentEpisodeId(data.episodeId);
+          setPosition(0);
+          setDuration(0);
+          break;
 
-                showToast(`Épisode "${currentEpisode.name}" terminé !`);
+        case "progress": {
+          const ep = currentEpisodeRef.current;
+          const pos = data.position || 0;
+          const dur = data.duration || 0;
 
-                // PASSER À L’ÉPISODE SUIVANT AUTOMATIQUEMENT
-                setTimeout(() => handleNextEpisode(), 800);
-            } else {
-                setPosition(data.position || 0);
-                setDuration(data.duration || 0);
-                
-                onProgress &&
-                    onProgress(currentEpisode, {
-                        position: data.position || 0,
-                        duration: data.duration || 0,
-                        ended: false,
-                    }, false);
-            }
-        }, userId);
+          setPosition(pos);
+          setDuration(dur);
 
-        setSource(sse);
-
-        return () => {
-            try { sse && sse.close(); } catch (e) {}
-        };
-    }, [isOpen, currentEpisode?.id, userId]);
-
-    /* ────────────────────────────────────────────────────────────────
-       2) Passer à l'épisode suivant
-    ───────────────────────────────────────────────────────────────── */
-    const handleNextEpisode = () => {
-        setEnded(false);
-        setPosition(0);
-
-        if (currentIndex + 1 < selectedEpisodes.length) {
-            setCurrentIndex((i) => i + 1);
-        } else {
-            showToast("Tous les épisodes de la playlist sont terminés !");
-            onClose();
+          ep &&
+            onProgress?.(
+              ep,
+              { position: pos, duration: dur, ended: false },
+              false
+            );
+          break;
         }
+
+        case "episode-ended": {
+          const ep = currentEpisodeRef.current;
+          ep && showToast(`Épisode ${ep.episode_number} terminé`);
+          //fermer la modale si c'était le dernier épisode
+          if (data.isLastEpisode) {
+            ep &&
+              onProgress?.(
+                ep,
+                { position: duration, duration: duration, ended: true },
+                true
+              );
+            showToast("Tous les épisodes de la playlist sont terminés !");
+            handleClose();
+          } else {
+            ep &&
+              onProgress?.(
+                ep,
+                { position: duration, duration: duration, ended: true },
+                false
+              );
+          }   break;
+        }
+        //fermer la modale si on ne recoit plus rien du sse
+        case "playlist-error":
+          showToast("Erreur lors de la lecture de la playlist.");
+          handleClose();
+          break;
+
+        //fermer la modale si la playlist est terminée
+        case "playlist-ended":
+          showToast("Playlist terminée !");
+          handleClose();
+          break;
+
+        default:
+          break;
+      }
+    });
+
+    sseRef.current = sse;
+
+    return () => {
+      cleanup();
     };
+  }, [isOpen, userId]);
 
-    /* ──────────────────────────────────────────────────────────────── */
+  // Cleanup SSE
+  const cleanup = () => {
+    try {
+      sseRef.current?.close();
+    } catch {}
+    sseRef.current = null;
+    startedRef.current = false;
+  };
 
-    const percent = duration > 0 ? (position / duration) * 100 : 0;
+  // Close modal
+  const handleClose = () => {
+    cleanup();
+    onClose();
+  };
+  
+  if (!isOpen || selectedEpisodes.length === 0) return null;
 
-    if (!isOpen || selectedEpisodes.length === 0) return null;
+  const percent =
+    duration > 0 ? Math.min((position / duration) * 100, 100) : 0;
+  
+  const currentEp = currentEpisodeRef.current;
 
-    return (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50">
-            <div className="relative bg-white/10 border border-white/20 rounded-2xl p-6 w-[450px] shadow-2xl backdrop-blur-xl text-white">
+  // Composant amélioré
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xl">
+      <div className="relative w-[480px] rounded-2xl border border-white/10 bg-gray-800/80 p-7 text-white shadow-2xl backdrop-blur-xl">
+        {/* Close Button - plus visible */}
+        <button
+          onClick={handleClose}
+          className="absolute right-4 top-4 rounded-full p-1 text-white/70 transition hover:bg-white/10 hover:text-white"
+          aria-label="Fermer la lecture"
+        >
+          <X className="h-6 w-6" />
+        </button>
 
-                {/* Bouton fermer */}
-                <button
-                    onClick={() => {
-                        onProgress &&
-                            onProgress(currentEpisode, { position, duration, ended: false }, true);
-                        onClose();
+        {/* Header/Title */}
+        <div className="text-center">
+            <p className="text-sm font-medium text-white/60 mb-1">{seriesName}</p>
+            <h2 className="text-3xl font-bold leading-tight">
+                {currentEp?.name || "Chargement de l'épisode..."}
+            </h2>
+        </div>
+
+        {/* Progress Section */}
+        <div className="my-6">
+            {/* Progress Bar - plus haute */}
+            <div className="h-2 w-full overflow-hidden rounded-full bg-white/20">
+                <div
+                    className="h-full rounded-full transition-all duration-300 ease-out"
+                    style={{
+                        width: `${percent}%`,
+                        backgroundColor: mainColor // Utilise la couleur principale pour le remplissage
                     }}
-                    className="absolute top-3 right-3 text-white/70 hover:text-white transition"
-                >
-                    <X className="w-5 h-5" />
-                </button>
+                />
+            </div>
 
-                {/* Titre */}
-                <h2 className="text-2xl font-semibold mb-1 text-center">
-                    Lecture – {currentEpisode.name}
-                </h2>
+            {/* Time Display */}
+            <div className="mt-2 flex justify-between text-sm font-mono text-white/80">
+                <span>{formatTime(position)}</span>
+                <span>{formatTime(duration)}</span>
+            </div>
 
-                {/* Progression */}
-                <div className="w-full h-4 bg-white/20 rounded-full overflow-hidden mb-2 mt-3">
-                    <div
-                        className="h-full rounded-full transition-all duration-200"
-                        style={{ width: `${percent}%`, backgroundColor: mainColor }}
-                    />
-                </div>
-
-                <div className="flex justify-between text-sm mb-2">
-                    <span>{formatTime(position)}</span>
-                    <span>{formatTime(duration)}</span>
-                </div>
-
-                {/* Status */}
-                {!ended ? (
-                    <p className="text-center text-sm mb-4 text-white/80">
-                        Lecture en cours…
-                    </p>
-                ) : (
-                    <p className="text-center text-green-400 font-medium mt-2">
-                        Épisode terminé ! Lecture du suivant…
-                    </p>
-                )}
-
-                {/* ────────────────────────────────────────────────
-                    PLAYLIST : liste des épisodes sélectionnés
-                ──────────────────────────────────────────────── */}
-                <h3 className="text-lg font-semibold mt-4 mb-2">Playlist :</h3>
-
-                <div className="max-h-40 overflow-y-auto border border-white/20 rounded-lg p-3 bg-white/5">
-                    {selectedEpisodes.map((ep, index) => (
-                        <div
-                            key={ep.id}
-                            className={`p-2 rounded-md mb-1 ${
-                                index === currentIndex
-                                    ? "bg-green-600/40"
-                                    : "bg-white/10"
-                            }`}
-                        >
-                            Épisode {ep.episode_number} – {ep.name}
-                        </div>
-                    ))}
-                </div>
+            {/* Status */}
+            <div className="mt-3 flex items-center justify-center text-sm font-medium text-white/80">
+                <Loader className="h-4 w-4 mr-2 animate-spin text-white/50" />
+                <span>Lecture en cours de l'épisode {currentEp?.episode_number}</span>
             </div>
         </div>
-    );
+
+        {/* Playlist Section */}
+        <h3 className="mb-3 mt-5 flex items-center text-lg font-semibold text-white">
+            <List className="h-5 w-5 mr-2" />
+            Playlist Suivante
+        </h3>
+
+        <div className="max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-white/5 p-2 shadow-inner">
+          {selectedEpisodes.map((ep) => {
+            const isActive = ep.id === currentEpisodeId;
+            return (
+                <div
+                key={ep.id}
+                className={`flex items-center justify-between rounded-lg p-3 mb-1 transition-all duration-200 ${
+                    isActive
+                        ? "shadow-lg scale-[1.01] font-semibold text-white"
+                        : "text-white/80 hover:bg-white/10"
+                }`}
+                style={isActive ? { backgroundColor: mainColor, boxShadow: `0 0 10px ${mainColor}40` } : {}}
+              >
+                <div className="flex-1 overflow-hidden">
+                    <span className="text-sm block truncate">
+                        Épisode {ep.episode_number}
+                    </span>
+                    <span className="text-lg leading-tight truncate">
+                        {ep.name}
+                    </span>
+                </div>
+                {isActive && <PlayCircle className="h-6 w-6 ml-3 shrink-0" />}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
 };
 
-/* ────────────────────────────────────────────────────────────────
-   Formatage du temps
-────────────────────────────────────────────────────────────────── */
-function formatTime(sec) {
-    const minutes = Math.floor(sec / 60) || 0;
-    const seconds = Math.floor(sec % 60) || 0;
-    const hours = Math.floor(sec / 3600) || 0;
+// Fonction formatTime inchangée
+function formatTime(sec = 0) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
 
-    if (hours > 0) {
-        return `${hours.toString().padStart(2, "0")}:${minutes
-            .toString()
-            .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-    }
-    return `${minutes.toString().padStart(2, "0")}:${seconds
-        .toString()
-        .padStart(2, "0")}`;
+  if (h > 0) {
+    return `${h.toString().padStart(2, "0")}:${m
+      .toString()
+      .padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  }
+
+  return `${m.toString().padStart(2, "0")}:${s
+    .toString()
+    .padStart(2, "0")}`;
 }
 
 export default PlayEpisodeModal;

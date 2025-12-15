@@ -166,13 +166,14 @@ def get_watch_progress(payload: WatchProgressRequest, db: Session = Depends(get_
 
         total_episodes += season_total
         total_watched += watched_count
-        watched_episode_ids = [ep.episode_id for ep in watched_episodes]
+        
+        watching_episode_ids = [ep.episode_id for ep in watched_episodes if not ep.finished] # en cours de visionnage
         
         season_progress.append({
             "season_watch_id": s.id,
             "season_id": s.season_id,
             "progress": progress,
-            "watched_eps": watched_episode_ids      
+            "watching_eps": watching_episode_ids      
         })
 
     anime_progress = round((total_watched / total_episodes) * 100) if total_episodes > 0 else 0

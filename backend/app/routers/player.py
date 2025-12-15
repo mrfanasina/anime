@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse, FileResponse
 from sqlalchemy.orm import Session
-
+from pydantic import BaseModel
 import subprocess
 import asyncio
 import json
@@ -16,6 +16,18 @@ from app.db.models.watch import Watch
 from app.db.models.user import User
 
 router = APIRouter()
+VIEWED_THRESHOLD = 92  # seconds
+# globals.py ou en haut du router
+MPV_SOCKET = "/tmp/mpv_playlist_socket"
+CURRENT_PLAYLIST = {
+    "episodes": [],
+    "start_times": {},
+    "watch_episode_map": {},
+    "user_id": None,
+}
+
+class PlaylistRequest(BaseModel):
+    episode_ids: list[int]
 
 # ---------------------
 # DB Dependency
@@ -236,6 +248,236 @@ async def play_episode(episode_id: int, db: Session = Depends(get_db), userId: i
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
+@router.post("/play-playlist")
+async def play_playlist(
+    payload: PlaylistRequest,
+    db: Session = Depends(get_db),
+    userId: int | None = None
+):
+    VIEWED_THRESHOLD = 92
+
+    # -------------------------------
+    # 1️⃣ Load episodes
+    # -------------------------------
+    episodes = (
+        db.query(Episode)
+        .filter(Episode.id.in_(payload.episode_ids))
+        .order_by(Episode.id)
+        .all()
+    )
+    if not episodes:
+        raise HTTPException(404, "No episodes found")
+
+    for ep in episodes:
+        if not os.path.exists(ep.path):
+            raise HTTPException(404, f"File not found: {ep.path}")
+
+    # -------------------------------
+    # 2️⃣ User & Watch setup
+    # -------------------------------
+    user = db.query(User).filter(User.id == userId).first() if userId else None
+    watch_episode_map = {}
+    start_times = {}
+
+    if user:
+        anime_id = episodes[0].season.anime.id
+        watch = db.query(Watch).filter_by(
+            user_id=user.id,
+            anime_id=anime_id
+        ).first()
+
+        if not watch:
+            watch = Watch(user_id=user.id, anime_id=anime_id, completed=False)
+            db.add(watch)
+            db.commit()
+            db.refresh(watch)
+
+        for ep in episodes:
+            watch_season = db.query(WatchSeason).filter_by(
+                watch_id=watch.id,
+                season_id=ep.season.id
+            ).first()
+
+            if not watch_season:
+                watch_season = WatchSeason(
+                    watch_id=watch.id,
+                    season_id=ep.season.id,
+                    completed=False
+                )
+                db.add(watch_season)
+                db.commit()
+                db.refresh(watch_season)
+
+            watch_ep = db.query(WatchEpisode).filter_by(
+                season_id=watch_season.id,
+                episode_id=ep.id
+            ).first()
+
+            if not watch_ep:
+                watch_ep = WatchEpisode(
+                    season_id=watch_season.id,
+                    episode_id=ep.id,
+                    watched=False,
+                    finished=False,
+                    position=0
+                )
+                db.add(watch_ep)
+                db.commit()
+                db.refresh(watch_ep)
+
+            watch_episode_map[ep.id] = watch_ep.id
+
+            if watch_ep.position and abs(
+                watch_ep.position - (watch_ep.duration or 0)
+            ) > VIEWED_THRESHOLD:
+                start_times[ep.id] = watch_ep.position
+            else:
+                start_times[ep.id] = 0
+
+    # -------------------------------
+    # 3️⃣ Launch MPV
+    # -------------------------------
+    if os.path.exists(MPV_SOCKET):
+        os.remove(MPV_SOCKET)
+
+    cmd = [
+        "mpv",
+        "--fs",
+        "--pause=no",
+        f"--input-ipc-server={MPV_SOCKET}",
+    ] + [ep.path for ep in episodes]
+
+    subprocess.Popen(cmd)
+
+    # -------------------------------
+    # 4️⃣ Store context for SSE
+    # -------------------------------
+    CURRENT_PLAYLIST.update({
+        "episodes": episodes,
+        "start_times": start_times,
+        "watch_episode_map": watch_episode_map,
+        "user_id": userId,
+    })
+
+    return {"status": "started", "episodes": len(episodes)}
+
+
+@router.get("/play-playlist/stream")
+async def play_playlist_stream():
+    VIEWED_THRESHOLD = 92
+
+    async def event_stream():
+        while not os.path.exists(MPV_SOCKET):
+            await asyncio.sleep(0.1)
+
+        reader, writer = await asyncio.open_unix_connection(MPV_SOCKET)
+
+        # observe MPV
+        props = {"time-pos": 1, "duration": 2, "playlist-pos": 3}
+        for prop, pid in props.items():
+            writer.write(json.dumps({
+                "command": ["observe_property", pid, prop]
+            }).encode() + b"\n")
+        await writer.drain()
+
+        episodes = CURRENT_PLAYLIST["episodes"]
+        start_times = CURRENT_PLAYLIST["start_times"]
+        watch_episode_map = CURRENT_PLAYLIST["watch_episode_map"]
+        user_id = CURRENT_PLAYLIST["user_id"]
+
+        current_index = 0
+        current_episode = episodes[0]
+        duration = 0
+        position = 0
+        last_save = asyncio.get_event_loop().time()
+        start_sent = False
+
+        while True:
+            raw = await reader.readline()
+            if not raw:
+                await asyncio.sleep(0.01)
+                continue
+
+            try:
+                data = json.loads(raw.decode())
+            except:
+                continue
+
+            event = data.get("event")
+            name = data.get("name")
+            value = data.get("data")
+
+            # start time
+            if not start_sent and start_times.get(current_episode.id, 0) > 0:
+                writer.write(json.dumps({
+                    "command": ["set_property", "time-pos", start_times[current_episode.id]]
+                }).encode() + b"\n")
+                await writer.drain()
+                start_sent = True
+
+            # episode change
+            if event == "property-change" and name == "playlist-pos":
+                if value is not None and value < len(episodes):
+                    current_index = value
+                    current_episode = episodes[value]
+                    start_sent = False
+                    yield f"data: {json.dumps({'type':'episode-change','episodeId':current_episode.id,'index':current_index})}\n\n"
+
+            # progress
+            elif event == "property-change" and name == "time-pos":
+                if value is not None:
+                    position = value
+                    now = asyncio.get_event_loop().time()
+
+                    if user_id and current_episode.id in watch_episode_map and now - last_save > 1:
+                        db = SessionLocal()
+                        wp = db.query(WatchEpisode).filter_by(
+                            id=watch_episode_map[current_episode.id]
+                        ).first()
+                        if wp:
+                            wp.position = position
+                            db.commit()
+                        db.close()
+                        last_save = now
+
+                    yield f"data: {json.dumps({'type':'progress','episodeId':current_episode.id,'position':position,'duration':duration})}\n\n"
+
+            # duration
+            elif event == "property-change" and name == "duration":
+                duration = value or 0
+
+            # end episode
+            elif event == "end-file":
+                if user_id and current_episode.id in watch_episode_map:
+                    db = SessionLocal()
+                    wp = db.query(WatchEpisode).filter_by(
+                        id=watch_episode_map[current_episode.id]
+                    ).first()
+                    if wp:
+                        wp.duration = duration
+                        wp.finished = abs(wp.duration - wp.position) <= VIEWED_THRESHOLD
+                        wp.watched = True
+                        wp.watched_at = datetime.utcnow()
+                        db.commit()
+                    db.close()
+
+                yield f"data: {json.dumps({'type':'episode-ended','episodeId':current_episode.id})}\n\n"
+
+            elif event == "shutdown":
+                yield f"data: {json.dumps({'type':'playlist-ended'})}\n\n"
+                break
+
+            await asyncio.sleep(0.01)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 # ============================================================
 # 🔥 STREAM : Lecture vidéo directe (frontend web)

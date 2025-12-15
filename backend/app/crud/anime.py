@@ -224,7 +224,6 @@ def get_or_create_episode(
     )
 
     episode_number = extract_episode_number(episode_name)
-    print(episode_name)
     # -------------------- CREATION --------------------
     if not episode:
         file_mtime = datetime.datetime.fromtimestamp(os.path.getmtime(path))
@@ -282,7 +281,6 @@ def get_last_episode_number(db: Session, anime_id: int) -> int:
     )
     if last_episode:
         return last_episode.episode_number, last_episode.season_id
-    return 0, None
     return last_episode.episode_number if last_episode else 0
 
 def get_next_episode_id(session: Session, episode_id: int):

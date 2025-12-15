@@ -51,7 +51,10 @@ def get_args():
                         help="Monter les disques après lancement du serveur.")
 
     parser.add_argument("-s", "--sync", action="store_true",
-                        help="Synchroniser après lancement du serveur.")
+                        help="Synchroniser TOUT (classique + movies + ova).")
+
+    parser.add_argument("-ss", "--seasonal-sync", action="store_true",
+                        help="Synchroniser UNIQUEMENT les animés saisonniers.")
 
     parser.add_argument("--get-info", action="store_true",
                         help="Récupérer infos anime après lancement du serveur.")
@@ -86,7 +89,10 @@ def main():
         if args.sync:
             print("🔄 Sync...")
             sync.sync_all_disks()
-
+        if args.seasonal_sync:
+            print("🧊 Sync saisonnier (headless)...")
+            sync.sync_seasonal_only()
+            return 
         if args.get_info:
             print("🌐 Get-info...")
             from app.utils import get_anime_info as mal_info
@@ -106,6 +112,14 @@ def main():
     time.sleep(1)
 
     # ===== 3 — Actions à lancer APRÈS démarrage du serveur =====
+    if args.seasonal_sync:
+        print("🧊 Synchronisation SAISONNIÈRE...")
+        try:
+            sync.sync_seasonal_only()
+            print("✅ Sync saisonnier terminée")
+        except Exception as e:
+            print("❌ Erreur sync saisonnier :", e)
+            traceback.print_exc()
 
     if args.mount:
         print("💽 Montage des disques...")

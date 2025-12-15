@@ -55,3 +55,30 @@ export const getFolders = async () => {
   return response
 
 }
+export const playAnimePlaylist = (episodeIds, userId, onEvent) => {
+  // 1. lancer la playlist
+  fetch(`${API_URL}player/play-playlist?userId=${userId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ episode_ids: episodeIds })
+  });
+
+  // 2. écouter le SSE
+  const sse = new EventSource(
+    `${API_URL}player/play-playlist/stream?userId=${userId}`,
+    { withCredentials: true }
+  );
+
+  sse.onmessage = (e) => {
+    if (!e.data) return;
+    try {
+      const parsed = JSON.parse(e.data);
+      console.log("SSE data:", parsed);
+      onEvent(parsed);
+    } catch (err) {
+      console.error("SSE parse error", err);
+    }
+  };
+
+  return sse;
+};

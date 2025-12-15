@@ -23,7 +23,7 @@ import {
   getMissingEpisodes,
   searchDownloadableAnime,
 } from "../../controllers/download.js";
-import { Download, PlayCircle, Eye, CheckCircle2, Plus, ListChecks, ListMusic, Play, X, Check } from "lucide-react";
+import { Download, PlayCircle, Eye, CheckCircle2, Plus, ListChecks, ListMusic, Play, X, Check, Trash, CheckSquare, EyeOff } from "lucide-react";
 import PlayEpisodeModal from "../../components/PlayEpisodeModal.jsx";
 
 const AnimeDetails = () => {
@@ -58,6 +58,7 @@ const AnimeDetails = () => {
   const [seasonProgress, setSeasonProgress] = useState({}); // progression par saison (grace aux episodes)
   const [playlist, setPlaylist] = useState([]);
   const [selectMode, setSelectMode] = useState(false);
+  const [showNotFound, setShowNotFound] = useState(false);
 
   //lire si play contient un id
   // useEffect(() => {
@@ -211,7 +212,7 @@ const AnimeDetails = () => {
     progressData.seasons.forEach(seasonProgress => {
       const season = anime.seasons.find(s => s.id === seasonProgress.season_id);
       if (!season) return;
-      seasonProgress.watched_eps.forEach(episodeId => {
+      seasonProgress.watching_eps.forEach(episodeId => {
         const episode = season.episodes.find(e => e.id === episodeId);
         if (episode) watchedEps.push({ ...episode, season });
       });
@@ -224,7 +225,7 @@ const AnimeDetails = () => {
     if (!progressData) return;        
     const map = {};
     progressData.seasons.forEach(season => {
-      map[season.season_id] = new Set(season.watched_eps);
+      map[season.season_id] = new Set(season.watching_eps);
     });
 
     setViewedMap(map);
@@ -406,62 +407,109 @@ const AnimeDetails = () => {
     setIsPlaying(true);
   }
   const getCompactLangTag = (episode, preferredLang = "fr") => {
-    const langs = episode.languages?.toLowerCase().split(",") ?? [];
-    const subs = episode.subtitles?.toLowerCase().split(",") ?? [];
+    const normalize = s =>
+      s
+        ?.toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim();
 
-    const map = {
-      fr: "fre",
-      en: "eng",
+    const split = s => (s ? s.split(",").map(normalize) : []);
+
+    const langs = split(episode.audio_languages);
+    const subs = split(episode.subtitles);
+    
+    const LANG_ALIASES = {
+      fr: ["fr", "fre", "fra", "french", "francais", "français"],
+      en: ["en", "eng", "english"],
+      ja: ["ja", "jpn", "japanese", "japonais"],
     };
 
-    const pref = map[preferredLang];
-    if (!pref) return null;
+    const aliases = LANG_ALIASES[preferredLang] ?? [preferredLang];
 
-    const hasAudioPref = langs.includes(pref);
-    const hasSubPref = subs.includes(pref);
+    const isPreferred = l => aliases.includes(l);
 
-    const hasOtherAudio = langs.some(l => l !== pref);
-    const hasOtherSubs = subs.some(s => s !== pref);
+    const hasPrefAudio = langs.some(isPreferred);
+    const hasPrefSubs = subs.some(isPreferred);
 
-    let label = null;
+    const otherAudios = langs.filter(l => !isPreferred(l));
+    const otherSubs = subs.filter(s => !isPreferred(s));
 
-    if (hasAudioPref) {
-      label = preferredLang === "fr" ? "VF" : pref.toUpperCase();
-    } else if (hasSubPref) {
-      label = preferredLang === "fr"
-        ? "VOSTFR"
-        : `VOST${preferredLang.toUpperCase()}`;
+    /* =====================
+      1️⃣ VF / VF+
+      ===================== */
+    if (hasPrefAudio) {
+      const hasMore = otherAudios.length > 0 || subs.length > 0;
+      return {
+        label:
+          preferredLang === "fr"
+            ? hasMore ? "VF+" : "VF"
+            : hasMore ? preferredLang.toUpperCase() + "+" : preferredLang.toUpperCase(),
+        hasMore,
+        otherSubs: otherSubs || undefined,
+        otherAudios: otherAudios || undefined
+        
+      };
+    }
+    
+    /* =====================
+      2️⃣ VOST / VOST+
+      ===================== */
+    if (hasPrefSubs) {
+      const hasMore = otherSubs.length > 0 || langs.length > 1;
+      
+      return {
+        label:
+          preferredLang === "fr"
+            ? hasMore ? "VOSTFR+" : "VOSTFR"
+            : hasMore
+              ? `VOST${preferredLang.toUpperCase()}+`
+              : `VOST${preferredLang.toUpperCase()}`,
+        hasMore,
+        otherSubs: otherSubs || undefined,
+        otherAudios: otherAudios || undefined
+
+      };
     }
 
-    if (!label) return null;
-
-    return {
-      label,
-      hasMore: hasOtherAudio || hasOtherSubs,
-    };
+    return null;
   };
 
-    
+  // Vider la playlist et marquer watched false dans le backend
+  const removeAllPlaylist = () => {
+    for (const ep of playlist) {
+      // Marquer watched false dans le backend
+      addWatchEpisode(user.id, {
+        episode_id: ep.id,
+        watched: false
+      });
+    }
+    showToast("Playlist vidée");
+    setPlaylist([]);
+  };
 
 return (
     <div style={{ backgroundColor: bgColor, minHeight: "100vh", color: textColor }}>
       <TopBar />
 
       {/* MODAL DE LECTURE */}
-    <PlayEpisodeModal
-        userId={user?.id}
-        selectedEpisodes={playlist}       
-        isOpen={isPlaying}
-        onClose={() => setIsPlaying(false)}
-    />
+      <PlayEpisodeModal
+          userId={user?.id}
+          selectedEpisodes={playlist}       
+          isOpen={isPlaying}
+          seriesName={anime.name}
+          onClose={() => setIsPlaying(false)}
+      />
       {/* Floating Button */}
       <button
         onClick={startPlaylist}
-        className="mt-5 px-6 py-4 backdrop-blur-2xl right-6 fixed bottom-6 rounded-xl flex items-center gap-2 font-bold transition duration-300 transform hover:scale-[1.02] shadow-lg"
-        style={{ backgroundColor: primaryColors.main + "10", color: textColor }}
+        className="mt-5 px-6 py-4 backdrop-blur-2xl fixed right-6 bottom-6 z-50 rounded-xl flex items-center gap-2 font-bold transition duration-300 transform hover:scale-[1.02] shadow-lg"
+        style={{ backgroundColor: primaryColors.main + "60", color: textColor }}
       >
-        <Play size={18} /> Lancer la lecture ({playlist.length})
+        <Play size={18} /> Regarder les épisodes ({playlist.length})
       </button>
+
+
       <div className="pt-18 md:px-12 pb-10 max-w-7xl mx-auto"> {/* Ajout de max-w-7xl mx-auto */}
         {/* --- HEADER ANIME AMÉLIORÉ --- */}
         <div
@@ -471,7 +519,7 @@ return (
           <img
             src={anime.image_url || "/default-image.jpg"}
             alt={anime.name}
-            className="w-[200px] h-[300px] object-cover rounded-xl shadow-xl flex-shrink-0 mx-auto md:mx-0"
+            className="object-cover rounded-xl shadow-xl flex-shrink-0 mx-auto md:mx-0"
           />
           <div className="flex flex-col justify-between flex-1">
             <div>
@@ -518,7 +566,7 @@ return (
 
               {/* Description / Synopsis */}
               <p className="mt-3 text-base leading-relaxed max-w-3xl opacity-90">
-                {anime.synopsis || anime.description}
+                { anime.description || anime.synopsis}
               </p>
 
               {/* Bar de Progression */}
@@ -586,14 +634,24 @@ return (
                 </div>
               ))}
             </div>
-
+            <div className="flex flex-col md:flex-row md:items-center md:gap-4 mt-4">
             <button
               onClick={startPlaylist}
-              className="mt-5 px-6 py-2 rounded-xl flex items-center gap-2 font-bold transition duration-300 transform hover:scale-[1.02] shadow-lg"
+              className="mt-2 px-6 py-2 rounded-xl flex items-center gap-2 font-bold transition duration-300 transform hover:scale-[1.02] shadow-lg"
               style={{ backgroundColor: primaryColors.main, color: textColor }}
             >
               <Play size={18} /> Lancer la lecture ({playlist.length})
             </button>
+            {/* Vider la playlist */}
+            <button
+              onClick={removeAllPlaylist}
+              className="mt-2 bg-red-400 px-4 py-2 rounded-xl flex items-center gap-2 font-medium transition duration-300 transform hover:scale-[1.02] shadow-md"
+              style={{ color: textColor }}
+            >
+              <Trash size={18} /> Vider la playlist
+            </button>
+            </div>
+
           </div>
         )}
 
@@ -627,38 +685,103 @@ return (
           </div>
         )}
             <h3 className="text-xl font-bold mt-4">Épisodes de la saison sélectionnée:</h3>
-        
-        {/* --- BARRE D'OUTILS ET OPTIONS --- */}
-        <div className="mt-8 flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-            {/* Option Lecture */}
-            <div className="flex items-center gap-3">
-                <label className="font-medium text-sm opacity-80">Option de lecture :</label>
-                <select
-                    value={optionLecture}
-                    onChange={(e) => setOptionLecture(e.target.value)}
-                    className="px-4 py-2 rounded-xl text-sm border-2 transition focus:ring-2 focus:ring-opacity-50"
-                    style={{ backgroundColor: cardBg, color: textColor, borderColor: primaryColors.main + "40"}}
-                >
-                    <option>Sur MPV</option>
-                    <option>Dans le navigateur</option>
-                </select>
-            </div>
+            {/* --- BARRE D'OUTILS & OPTIONS --- */}
+            <div className="mt-8 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
 
-            {/* Bouton de Sélection Multiple */}
-            <button
-                onClick={() => setSelectMode(!selectMode)}
-                className={`px-4 py-2 rounded-xl font-medium transition duration-300 transform hover:scale-[1.02] shadow-md flex items-center gap-2 text-sm`}
-                style={{
+              {/* ================= OPTION DE LECTURE ================= */}
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium opacity-80">
+                  Option de lecture
+                </label>
+
+                <select
+                  value={optionLecture}
+                  onChange={(e) => setOptionLecture(e.target.value)}
+                  className="px-4 py-2 rounded-xl text-sm border-2 transition-all focus:ring-2 focus:ring-opacity-50"
+                  style={{
+                    backgroundColor: cardBg,
+                    color: textColor,
+                    borderColor: primaryColors.main + "40",
+                  }}
+                >
+                  <option>Sur MPV</option>
+                  <option>Dans le navigateur</option>
+                </select>
+                {/* ================= TOGGLE EPISODES INTROUVABLES ================= */}
+                <button
+                  onClick={() => setShowNotFound((prev) => !prev)}
+                  className="flex items-center gap-3 px-5 py-2.5 rounded-xl text-sm font-semibold shadow-md transition-all duration-300 hover:scale-[1.03]"
+                  style={{
+                    backgroundColor: showNotFound
+                      ? primaryColors.accent + "40"
+                      : cardBg,
+                    color: textColor,
+                    border: `1px solid ${
+                      showNotFound ? primaryColors.accent : primaryColors.main
+                    }40`,
+                  }}
+                >
+                  {showNotFound ? (
+                    <>
+                      <EyeOff size={16} />
+                      Masquer les épisodes introuvables
+                    </>
+                  ) : (
+                    <>
+                      <Eye size={16} />
+                      Afficher les épisodes introuvables
+                    </>
+                  )}
+                </button>
+
+              </div>
+
+
+              {/* ================= ACTIONS DE SÉLECTION ================= */}
+              <div className="flex items-center gap-3">
+
+                {/* TOUT SÉLECTIONNER */}
+                {selectMode && (
+                  <button
+                    onClick={() => {
+                      const seasonEpisodes = anime.seasons
+                        .find((s) => s.id === selectedSeasonId)
+                        ?.episodes.map((e) => e.id);
+
+                      if (seasonEpisodes) {
+                        setPlaylist(seasonEpisodes);
+                      }
+                    }}
+                    className="px-4 py-2 rounded-xl text-sm font-medium shadow-md transition-all duration-300 hover:scale-[1.02] flex items-center gap-2"
+                    style={{
+                      backgroundColor: primaryColors.main + "30",
+                      border: `1px solid ${primaryColors.main}40`,
+                      color: textColor,
+                    }}
+                  >
+                    <CheckSquare size={16} />
+                    Tout sélectionner
+                  </button>
+                )}
+
+                {/* MODE SÉLECTION MULTIPLE */}
+                <button
+                  onClick={() => setSelectMode((prev) => !prev)}
+                  className="px-4 py-2 rounded-xl text-sm font-medium shadow-md transition-all duration-300 hover:scale-[1.02] flex items-center gap-2"
+                  style={{
                     backgroundColor: selectMode
-                        ? primaryColors.main + "60"
-                        : cardBg,
+                      ? primaryColors.main + "60"
+                      : cardBg,
                     border: `1px solid ${primaryColors.main}40`,
-                }}
-            >
-                {selectMode ? <X size={16} /> : <ListChecks size={16} />} 
-                {selectMode ? "Désactiver la sélection" : "Activer la sélection multiple"}
-            </button>
-        </div>
+                    color: textColor,
+                  }}
+                >
+                  {selectMode ? <X size={16} /> : <ListChecks size={16} />}
+                  {selectMode ? "Désactiver la sélection" : "Sélection multiple"}
+                </button>
+
+              </div>
+            </div>
 
         {/* --- EPISODES AMÉLIORÉS --- */}
         {selectedSeasonId && (
@@ -673,6 +796,7 @@ return (
                     {season.episodes
                       .slice()
                       .sort((a, b) => a.episode_number - b.episode_number)
+                      .filter((episode) => showNotFound || !episode.not_found)
                       .map((episode) => {
                         const isViewed = viewedMap[season.id]?.has(episode.id);
                         const isInPlaylist = playlist.some((e) => e.id === episode.id);
@@ -680,6 +804,16 @@ return (
                         let epCardBg = cardBg;
                         if (isInPlaylist && !episode.finished) epCardBg = primaryColors.main + "30";
                         else if (isViewed) epCardBg = primaryColors.accent + getColorCard(episode);
+                        const langs =
+                          langTag?.hasMore && langTag.otherAudios
+                            ? "Language: " + episode.audio_languages
+                            : undefined;
+
+                        const subs =
+                          langTag?.hasMore && langTag.otherSubs
+                            ? "Sous-titres: " + episode.subtitles
+                            : undefined;
+                                                                    
                         return (
                           <div
                             key={episode.id}
@@ -738,19 +872,16 @@ return (
                               <p className="text-xs font-semibold mb-1" style={{ color: primaryColors.accent }}>
                                 ÉPISODE {episode.episode_number}
                               </p>
-                              {episode.subtitles || episode.languages && (
+                              {langTag && (
                                 <span
                                   className="text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1"
                                   style={{
                                     backgroundColor: primaryColors.accent + "30",
                                     color: primaryColors.accent,
                                   }}
-                                  title={langInfo.hasMore ? "Autres langues disponibles" : undefined}
+                                  title={langs + "\n" + subs}
                                 >
-                                  {langInfo.label}
-                                  {langInfo.hasMore && (
-                                    <span className="text-[10px] opacity-70">+</span>
-                                  )}
+                                  {langTag.label}
                                 </span>
 
                               )}
@@ -836,10 +967,10 @@ return (
                     {(!allEpisodesLoaded && downloadMode === 'next' ? nextEpisodes : downloadableEpisodes).map((ep) => {
                         const tags = getLanguageTags(ep.title);
                         const isMissing = missingNumbers.has(ep.episode_number);
-
+                        const id = `${ep.title}-${ep.episode_number}-${Math.random().toString(36).substr(2, 9)}`; // Génère un id unique avec des nombre aleatoire pour chaque episode téléchargeable
                         return (
                             <div
-                                key={ep.title + ep.episode_number}
+                                key={id}
                                 className={`p-4 rounded-xl shadow-lg transition-all flex flex-col justify-between relative border ${isMissing ? 'ring-4 ring-red-500/50 border-red-500' : 'border-transparent'}`}
                                 style={{ backgroundColor: cardBg }}
                             >
