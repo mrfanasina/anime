@@ -8,8 +8,16 @@
     <fragment
         android:id="@+id/nav_home"
         android:name="com.fa.animesync.ui.home.HomeFragment"
-        android:label="@string/menu_home"
-        tools:layout="@layout/fragment_home" />
+        android:label="Home" >
+        <action
+            android:id="@+id/action_nav_home_to_animeDetailsFragment"
+            app:destination="@id/animeDetailsFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/animeDetailsFragment"
+        android:name="com.fa.animesync.ui.details.AnimeDetailsFragment"
+        android:label="Détails Anime" />
 
     <fragment
         android:id="@+id/nav_gallery"
@@ -22,4 +30,5 @@
         android:name="com.fa.animesync.ui.slideshow.SlideshowFragment"
         android:label="@string/menu_slideshow"
         tools:layout="@layout/fragment_slideshow" />
+
 </navigation>

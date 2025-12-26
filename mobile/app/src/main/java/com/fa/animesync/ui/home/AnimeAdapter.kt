@@ -1,41 +1,45 @@
 package com.fa.animesync.ui.home
 
 import android.view.LayoutInflater
-import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageView
-import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
-import com.fa.animesync.R
+import com.fa.animesync.databinding.ItemAnimeBinding
 import com.fa.animesync.model.Anime
 
-class AnimeAdapter(private val animeList: List<Anime>) : RecyclerView.Adapter<AnimeAdapter.AnimeViewHolder>() {
+class AnimeAdapter(
+    private val animes: List<Anime>,
+    private val onClick: (Anime) -> Unit
+) : RecyclerView.Adapter<AnimeAdapter.AnimeViewHolder>() {
 
-    class AnimeViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        val imageView: ImageView = itemView.findViewById(R.id.imageAnime)
-        val titleTextView: TextView = itemView.findViewById(R.id.textAnimeTitle)
-        val descriptionTextView: TextView = itemView.findViewById(R.id.textAnimeDescription)
-        val scoreTextView: TextView = itemView.findViewById(R.id.textAnimeScore)
-    }
+    inner class AnimeViewHolder(val binding: ItemAnimeBinding) :
+        RecyclerView.ViewHolder(binding.root)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): AnimeViewHolder {
-        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_anime, parent, false)
-        return AnimeViewHolder(view)
+        val binding = ItemAnimeBinding.inflate(
+            LayoutInflater.from(parent.context),
+            parent,
+            false
+        )
+        return AnimeViewHolder(binding)
     }
 
     override fun onBindViewHolder(holder: AnimeViewHolder, position: Int) {
-        val anime = animeList[position]
+        val anime = animes[position]
 
-        holder.titleTextView.text = anime.title
-        holder.descriptionTextView.text = anime.description
-        holder.scoreTextView.text = "⭐ Note : ${anime.score}"
+        holder.binding.txtTitle.text = anime.name
+        holder.binding.txtNote.text = anime.note.toString()
+        holder.binding.fromPC.text = anime.fromPc.toString()
+        if (anime.image_url.isNotEmpty()) {
+            Glide.with(holder.itemView.context)
+                .load(anime.image_url)
+                .into(holder.binding.imgAnime)
+        }
 
-        Glide.with(holder.itemView.context)
-            .load(anime.imageUrl)
-            .placeholder(R.drawable.placeholder_image) // Mets une image par défaut dans res/drawable/
-            .into(holder.imageView)
+        holder.itemView.setOnClickListener {
+            onClick(anime)
+        }
     }
 
-    override fun getItemCount(): Int = animeList.size
+    override fun getItemCount() = animes.size
 }

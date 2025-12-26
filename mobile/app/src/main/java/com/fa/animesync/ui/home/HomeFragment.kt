@@ -1,16 +1,28 @@
 package com.fa.animesync.ui.home
 
+import android.Manifest
 import android.app.AlertDialog
+import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.OptIn
+import androidx.camera.core.*
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.bumptech.glide.Glide
+import com.fa.animesync.R
 import com.fa.animesync.databinding.FragmentHomeBinding
 import com.fa.animesync.model.Anime
+import com.fa.animesync.ui.details.AnimeDetailsFragment
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.common.InputImage
 import retrofit2.*
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
@@ -25,6 +37,19 @@ class HomeFragment : Fragment() {
     private lateinit var animeAdapter: AnimeAdapter
     private val allAnimes = mutableListOf<Anime>()
 
+    private var cameraProvider: ProcessCameraProvider? = null
+    private var navigating = false
+
+    /* ===================== PERMISSION CAMÉRA ===================== */
+
+    private val cameraPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) openScanner()
+            else showErrorDialog("Permission caméra refusée")
+        }
+
+    /* ===================== LIFECYCLE ===================== */
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -37,127 +62,220 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        binding.recyclerViewAnime.layoutManager = LinearLayoutManager(requireContext())
-        animeAdapter = AnimeAdapter(allAnimes)
-        binding.recyclerViewAnime.adapter = animeAdapter
+        setupRecycler()
+        loadLocalAnimes()
+        loadPcAnimesIfCached()
+        setupQrButton()
+    }
 
-        // 📁 Ajoute les animés locaux
-        val localAnimes = fetchLocalAnimes()
-        localAnimes.forEach { enrichAnimeInfo(it) }
-        allAnimes.addAll(localAnimes)
-        animeAdapter.notifyDataSetChanged()
-
-        // 🌐 Demande l'IP du PC
-        promptForIp { ip ->
-            fetchPcAnimes(ip) { pcAnimes, errorMessage ->
-                if (errorMessage != null) {
-                    showErrorDialog(errorMessage)
-                } else {
-                    pcAnimes.forEach { enrichAnimeInfo(it) }
-                    allAnimes.addAll(pcAnimes)
-                    animeAdapter.notifyDataSetChanged()
-                }
-            }
-        }
+    override fun onResume() {
+        super.onResume()
+        navigating = false
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
+        closeScanner()
         _binding = null
     }
 
-    // 🎬 Récupère les animés locaux
-    private fun fetchLocalAnimes(): List<Anime> {
-        val animes = mutableListOf<Anime>()
-        val animeFolder = File("/storage/emulated/0/Movies/Anime")
+    /* ===================== RECYCLER ===================== */
 
-        if (animeFolder.exists()) {
-            animeFolder.listFiles()?.forEachIndexed { index, file ->
-                if (file.isDirectory) {
-                    animes.add(
-                        Anime(
-                            id = index,
-                            title = file.name,
-                            description = "Depuis le téléphone"
-                        )
+    private fun setupRecycler() {
+        animeAdapter = AnimeAdapter(allAnimes) { anime ->
+            openAnimeDetails(anime)
+        }
+
+        binding.recyclerViewAnime.apply {
+            layoutManager = LinearLayoutManager(requireContext())
+            adapter = animeAdapter
+        }
+    }
+
+    /* ===================== NAVIGATION ===================== */
+
+    private fun openAnimeDetails(anime: Anime) {
+        if (!anime.fromPc) {
+            Toast.makeText(requireContext(), "fromPc", Toast.LENGTH_SHORT).show()
+        }
+        if (navigating) return
+        navigating = true
+
+        closeScanner()
+
+        val bundle = Bundle().apply {
+            putInt("anime_id", anime.id)
+            putBoolean("fromPc", anime.fromPc)
+            if (!anime.fromPc) { // local
+                putString("anime_path", anime.path)
+            }
+        }
+
+        findNavController().navigate(
+            R.id.action_nav_home_to_animeDetailsFragment,
+            bundle
+        )
+    }
+    /* ===================== QR SCANNER ===================== */
+
+    private fun setupQrButton() {
+        binding.btnScanQr.setOnClickListener {
+            if (ContextCompat.checkSelfPermission(
+                    requireContext(),
+                    Manifest.permission.CAMERA
+                ) == PackageManager.PERMISSION_GRANTED
+            ) {
+                openScanner()
+            } else {
+                cameraPermission.launch(Manifest.permission.CAMERA)
+            }
+        }
+    }
+
+    private fun openScanner() {
+        binding.qrContainer.visibility = View.VISIBLE
+        startQrScan()
+    }
+
+    private fun closeScanner() {
+        binding.qrContainer.visibility = View.GONE
+        cameraProvider?.unbindAll()
+    }
+
+    @OptIn(ExperimentalGetImage::class)
+    private fun startQrScan() {
+        val providerFuture = ProcessCameraProvider.getInstance(requireContext())
+
+        providerFuture.addListener({
+            cameraProvider = providerFuture.get()
+
+            val preview = Preview.Builder().build().apply {
+                setSurfaceProvider(binding.cameraPreview.surfaceProvider)
+            }
+
+            val analyzer = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+
+            val scanner = BarcodeScanning.getClient()
+
+            analyzer.setAnalyzer(ContextCompat.getMainExecutor(requireContext())) { imageProxy ->
+                val mediaImage = imageProxy.image ?: run {
+                    imageProxy.close()
+                    return@setAnalyzer
+                }
+
+                val image = InputImage.fromMediaImage(
+                    mediaImage,
+                    imageProxy.imageInfo.rotationDegrees
+                )
+
+                scanner.process(image)
+                    .addOnSuccessListener { barcodes ->
+                        barcodes.firstOrNull()?.rawValue?.let { ip ->
+                            saveIp(ip)
+                            closeScanner()
+                            fetchPcAnimes(ip)
+                        }
+                    }
+                    .addOnCompleteListener {
+                        imageProxy.close()
+                    }
+            }
+
+            cameraProvider?.unbindAll()
+            cameraProvider?.bindToLifecycle(
+                viewLifecycleOwner,
+                CameraSelector.DEFAULT_BACK_CAMERA,
+                preview,
+                analyzer
+            )
+
+        }, ContextCompat.getMainExecutor(requireContext()))
+    }
+
+    /* ===================== DONNÉES ===================== */
+
+    private fun loadLocalAnimes() {
+        val folder = File("/storage/emulated/0/Movies/Anime")
+        if (!folder.exists()) return
+
+        folder.listFiles()?.forEachIndexed { index, file ->
+            if (file.isDirectory) {
+                allAnimes.add(
+                    Anime(
+                        id = index,
+                        title = file.name,
+                        description = "Depuis le téléphone",
+                        image_url = "",
+                        note = 0.0,
+                        name = file.name,
+                        title_nihon = null,
+                        title_english = null,
+                        title_romaji = null,
+                        path = file.absolutePath,
+                        elo = 0,
+                        synopsis = null,
+                        status = null,
+                        type = null,
+                        rank = null,
+                        created_at = null,
+                        studio = null,
+                        seasons_count = 0,
+                        fromPc = false,
+                        seasons = null
                     )
-                }
+                )
             }
         }
-        return animes
+        animeAdapter.notifyDataSetChanged()
     }
 
-    // 🌐 Boîte de dialogue pour entrer l'IP
-    private fun promptForIp(onIpEntered: (String) -> Unit) {
-        val editText = EditText(requireContext()).apply {
-            hint = "192.168.1.42"
-        }
-
-        AlertDialog.Builder(requireContext())
-            .setTitle("Adresse IP du PC")
-            .setMessage("Entre l'adresse IP locale du PC\n(ex: 192.168.1.42)")
-            .setView(editText)
-            .setCancelable(false)
-            .setPositiveButton("Valider") { _, _ ->
-                val ip = editText.text.toString().trim()
-                if (ip.isNotEmpty()) {
-                    onIpEntered(ip)
-                }
-            }
-            .show()
+    private fun loadPcAnimesIfCached() {
+        loadIp()?.let { fetchPcAnimes(it) }
     }
 
-    // 🔁 Appelle FastAPI pour récupérer les animés depuis le PC + gestion des erreurs
-    private fun fetchPcAnimes(ip: String, onResult: (List<Anime>, String?) -> Unit) {
+    private fun fetchPcAnimes(backUrl: String) {
         val retrofit = Retrofit.Builder()
-            .baseUrl("http://$ip:8000/")
+            .baseUrl("$backUrl/")
             .addConverterFactory(GsonConverterFactory.create())
             .build()
 
-        val api = retrofit.create(AnimeApi::class.java)
-        api.getAnimesFromPC().enqueue(object : Callback<List<Anime>> {
-            override fun onResponse(call: Call<List<Anime>>, response: Response<List<Anime>>) {
-                if (response.isSuccessful) {
-                    onResult(response.body() ?: emptyList(), null)
-                } else {
-                    onResult(emptyList(), "Erreur du serveur : ${response.code()} ${response.message()}")
-                }
-            }
-
-            override fun onFailure(call: Call<List<Anime>>, t: Throwable) {
-                onResult(emptyList(), "Échec de la connexion à l'API : ${t.localizedMessage}")
-            }
-        })
-    }
-
-    // 🌐 Enrichit un animé via l’API Jikan
-    private fun enrichAnimeInfo(anime: Anime) {
-        val retrofit = Retrofit.Builder()
-            .baseUrl("https://api.jikan.moe/")
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-
-        val api = retrofit.create(JikanApi::class.java)
-        api.searchAnime(anime.title).enqueue(object : Callback<JikanResponse> {
-            override fun onResponse(call: Call<JikanResponse>, response: Response<JikanResponse>) {
-                if (response.isSuccessful) {
-                    val result = response.body()?.data?.firstOrNull()
-                    if (result != null) {
-                        anime.description = result.synopsis ?: "Pas de synopsis"
-                        anime.imageUrl = result.images?.jpg?.image_url ?: ""
-                        anime.score = result.score ?: 0.0
-                        animeAdapter.notifyDataSetChanged()
+        retrofit.create(AnimeApi::class.java)
+            .getAnimesFromPC()
+            .enqueue(object : Callback<List<Anime>> {
+                override fun onResponse(
+                    call: Call<List<Anime>>,
+                    response: Response<List<Anime>>
+                ) {
+                    if (response.isSuccessful) {
+                        response.body()?.let {
+                            allAnimes.addAll(it)
+                            animeAdapter.notifyDataSetChanged()
+                        }
                     }
                 }
-            }
 
-            override fun onFailure(call: Call<JikanResponse>, t: Throwable) {
-                // Ignorer les erreurs réseau (optionnel)
-            }
-        })
+                override fun onFailure(call: Call<List<Anime>>, t: Throwable) {
+                    showErrorDialog(t.localizedMessage ?: "Erreur réseau")
+                }
+            })
     }
 
-    // ❗ Affiche une boîte de dialogue d'erreur
+    private fun saveIp(backUrl: String) {
+        requireContext()
+            .getSharedPreferences("anime_sync", Context.MODE_PRIVATE)
+            .edit()
+            .putString("backUrl", backUrl)
+            .apply()
+    }
+
+    private fun loadIp(): String? =
+        requireContext()
+            .getSharedPreferences("anime_sync", Context.MODE_PRIVATE)
+            .getString("backUrl", null)
+
+    /* ===================== UI ===================== */
     private fun showErrorDialog(message: String) {
         AlertDialog.Builder(requireContext())
             .setTitle("Erreur")
@@ -166,30 +284,25 @@ class HomeFragment : Fragment() {
             .show()
     }
 
-    // 🔗 Interface Retrofit vers FastAPI
+    /* ===================== API ===================== */
+
     interface AnimeApi {
-        @GET("animes")
+        @GET("anime")
         fun getAnimesFromPC(): Call<List<Anime>>
     }
 
-    // 🔗 Interface Jikan
     interface JikanApi {
         @GET("v4/anime")
         fun searchAnime(@Query("q") query: String): Call<JikanResponse>
     }
 
-    // 🔄 Modèles pour réponse Jikan
     data class JikanResponse(val data: List<JikanAnime>)
-
     data class JikanAnime(
-        val mal_id: Int,
-        val title: String,
         val synopsis: String?,
         val images: JikanImages?,
         val score: Double?
     )
 
     data class JikanImages(val jpg: JikanImageDetail)
-
     data class JikanImageDetail(val image_url: String)
 }
