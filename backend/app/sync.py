@@ -6,7 +6,6 @@ from app.db.session import SessionLocal
 from app.crud import anime as anime_crud
 from app.crud import seasonal as seasonal_crud
 from app.utils.folder import find_media_folders
-
 # ------------------ Synchronisation principale ------------------
 def sync_all_disks():
     """Parcours tous les disques et synchronise tous les animes et saisons."""
@@ -267,6 +266,7 @@ def sync_seasonal_animes(db: Session, saisonnier_root: str):
 
     print(f"🧊 Synchronisation saisonniers : {saisonnier_root}")
 
+    # cas 1: #Saisonnier/Season Name/Anime Name/...
     for season_folder in os.listdir(saisonnier_root):
         season_path = os.path.join(saisonnier_root, season_folder)
         if not os.path.isdir(season_path):
@@ -281,6 +281,12 @@ def sync_seasonal_animes(db: Session, saisonnier_root: str):
                 continue
 
             # Anime et saison saisonnière
-            anime = anime_crud.get_or_create_anime(db, anime_name, anime_path, force_update=True)
-            seasonal_crud.get_or_create_seasonal(db, anime, season_name, force_update=True)
+            anime = anime_crud.get_or_create_anime(db, anime_name, anime_path, force_update=True)            
             sync_anime_files(anime_path, anime, db, force_update=True)
+            seasonal_period = seasonal_crud.get_or_create_seasonal_period(db, season_name)
+            seasonal_crud.get_or_create_seasonal(
+                db,
+                anime=anime,
+                seasonal_period=seasonal_period,
+                force_update=True
+            )

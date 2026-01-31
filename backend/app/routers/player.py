@@ -16,9 +16,8 @@ from app.db.models.watch import Watch
 from app.db.models.user import User
 
 router = APIRouter()
-VIEWED_THRESHOLD = 92  # seconds
-# globals.py ou en haut du router
-MPV_SOCKET = "/tmp/mpv_playlist_socket"
+VIEWED_THRESHOLD = 120  # seconds
+MPV_SOCKET = "/tmp/player_mpv_socket"
 CURRENT_PLAYLIST = {
     "episodes": [],
     "start_times": {},
@@ -254,8 +253,6 @@ async def play_playlist(
     db: Session = Depends(get_db),
     userId: int | None = None
 ):
-    VIEWED_THRESHOLD = 92
-
     # -------------------------------
     # 1️⃣ Load episodes
     # -------------------------------
@@ -265,8 +262,13 @@ async def play_playlist(
         .order_by(Episode.id)
         .all()
     )
-    if not episodes:
-        raise HTTPException(404, "No episodes found")
+    if len(episodes) != len(payload.episode_ids):
+        found_ids = {ep.id for ep in episodes}
+        missing = set(payload.episode_ids) - found_ids
+        raise HTTPException(
+            404,
+            f"Episodes not found: {sorted(missing)}"
+        )
 
     for ep in episodes:
         if not os.path.exists(ep.path):
@@ -364,8 +366,6 @@ async def play_playlist(
 
 @router.get("/play-playlist/stream")
 async def play_playlist_stream():
-    VIEWED_THRESHOLD = 92
-
     async def event_stream():
         while not os.path.exists(MPV_SOCKET):
             await asyncio.sleep(0.1)
@@ -414,6 +414,8 @@ async def play_playlist_stream():
                 }).encode() + b"\n")
                 await writer.drain()
                 start_sent = True
+            
+            can_seek = False
 
             # episode change
             if event == "property-change" and name == "playlist-pos":
@@ -421,7 +423,29 @@ async def play_playlist_stream():
                     current_index = value
                     current_episode = episodes[value]
                     start_sent = False
-                    yield f"data: {json.dumps({'type':'episode-change','episodeId':current_episode.id,'index':current_index})}\n\n"
+                    can_seek = False
+                    duration = 0
+
+                    yield f"data: {json.dumps({
+                        'type':'episode-change',
+                        'episodeId': current_episode.id,
+                        'index': current_index
+                    })}\n\n"
+            elif event == "property-change" and name == "duration":
+                duration = value or 0
+                if duration > 0:
+                    can_seek = True
+
+            if (
+                not start_sent
+                and can_seek
+                and start_times.get(current_episode.id, 0) > 0
+            ):
+                writer.write(json.dumps({
+                    "command": ["set_property", "time-pos", start_times[current_episode.id]]
+                }).encode() + b"\n")
+                await writer.drain()
+                start_sent = True
 
             # progress
             elif event == "property-change" and name == "time-pos":
@@ -436,6 +460,7 @@ async def play_playlist_stream():
                         ).first()
                         if wp:
                             wp.position = position
+                            wp.finished = abs(wp.duration - wp.position) <= VIEWED_THRESHOLD if not wp.finished else wp.finished
                             db.commit()
                         db.close()
                         last_save = now

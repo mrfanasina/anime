@@ -8,15 +8,44 @@ from app.db.models.watch_episode import WatchEpisode
 from sqlalchemy import func, desc
 from sqlalchemy.orm import aliased
 from app.utils.media_info import extract_languages_and_subtitles
-
+from datetime import datetime
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.utils.get_anime_info import get_anime_info
+from app.crud.seasonal import get_calendar_season, get_season_period, get_seasonal
 import datetime
 import os
 from app.utils.extract import extract_episode_number, extract_season_number
+from app.utils.folder import find_media_folders
+from app.db.models.seasonal_animes import SeasonalAnime
 
 # ---------------- Tout les animes ----------------
 def get_all_animes(db: Session):
     return db.query(Anime).all()
 
+# mise à du path de l'anime
+def update_anime_path(db: Session, anime_id: int, new_path: str):
+    anime = db.query(Anime).filter_by(id=anime_id).first()
+    if anime:
+        anime.path = new_path
+        db.commit()
+        db.refresh(anime)
+    return anime
+
+# All movies 
+def get_all_movies(db: Session):
+    movies = db.query(Anime).filter_by(type="MOVIE").all()
+    for movie in movies:
+        if is_movie_on_disk(movie.path):
+            movie.is_on_disk = True
+        else:
+            movie.is_on_disk = False
+    return movies
+
+def is_movie_on_disk(path: str) -> bool:
+    if not path or not os.path.exists(path):
+        return False
+    folders = path.lower().split(os.sep)
+    return "movie" in folders or "movies" in folders
 
 def get_anime_details(db: Session, anime_id: int, user_id: int | None = None):
     """
@@ -31,12 +60,32 @@ def get_anime_details(db: Session, anime_id: int, user_id: int | None = None):
 
         seasons = db.query(Season).filter_by(anime_id=anime.id).all()
 
+        folders = find_media_folders()
+        isInMountedFolder = False
+        for folder in folders:
+            if anime.path and anime.path.startswith(folder):
+                isInMountedFolder = True
+                break
+        seasonal = get_seasonal(db, anime)
+
+        period = get_season_period(db, seasonal) if seasonal else None
+        calendar_season = get_calendar_season(db, period) if period else None
+
         result = {
             "id": anime.id,
             "name": anime.name,
             "title_romaji": anime.title_romaji,
             "title_nihon": anime.title_nihon,
             "title_english": anime.title_english,
+            "season_name": seasonal and calendar_season.name if seasonal and calendar_season else None,
+            "season_code": seasonal and calendar_season.code if seasonal and calendar_season else None,
+            "year": seasonal and period.year if seasonal and period else anime.created_at if anime.created_at else None,
+            "episode_count": seasonal.episode_count if seasonal else None,
+            "diffuse_day": seasonal.diffuse_day if seasonal else None,
+            "diffuse_time": seasonal.diffuse_time if seasonal else None,
+            "start_date": seasonal.start_date if seasonal else None,
+            "end_date": seasonal.end_date if seasonal else None,
+            "is_current": period.is_current if seasonal and period else None,
             "elo": anime.elo,
             "genres": [genre.name for genre in anime.genres],
             "path": anime.path,
@@ -50,8 +99,33 @@ def get_anime_details(db: Session, anime_id: int, user_id: int | None = None):
             "rank": anime.rank,
             "created_at": anime.created_at or "",
             "studio": anime.studio or "",
-            "progress": 0  # progress global initialisé à 0
+            "isInMountedFolder": isInMountedFolder,
+            "progress": 0, # progress global initialisé à 0
+            "fromPc": True 
         }
+        # -------------------------
+        # Ajouter les saisons saisonnières si l'anime est un saisonier
+        # -------------------------
+        # seasonal_entries = db.query(SeasonalAnime).filter_by(anime_id=anime.id).all()
+        
+        # if seasonal_entries:
+        #     result["seasonal_periods"] = []
+        #     for sa in seasonal_entries:
+        #         period = sa.seasonal_period
+        #         print(sa.diffuse_day)
+        #         result["seasonal_periods"].append({
+        #             "seasonal_anime_id": sa.id,
+        #             "season_name": period.calendar_season.name,
+        #             "season_code": period.calendar_season.code,
+        #             "year": period.year,
+        #             "episode_count": sa.episode_count,
+        #             "diffuse_day": sa.diffuse_day,
+        #             "diffuse_time": sa.diffuse_time,
+        #             "start_date": sa.start_date,
+        #             "end_date": sa.end_date,
+        #             "is_current": period.is_current,
+        #         })
+
 
         # -------------------------
         # Cas utilisateur non connecté
@@ -84,7 +158,6 @@ def get_anime_details(db: Session, anime_id: int, user_id: int | None = None):
         user_watch = db.query(Watch).filter_by(user_id=user_id, anime_id=anime.id).first()
         total_eps = 0
         watched_eps = 0
-
         for season in seasons:
             episodes = db.query(Episode).filter_by(season_id=season.id).all()
             season_data = {
@@ -170,29 +243,49 @@ def get_all_episodes_for_anime(db: Session, anime_id: int):
     return db.query(Episode).join(Season).filter(Season.anime_id == anime_id).all()
 
 # ---------------- Anime ----------------
-def get_or_create_anime(db: Session, name: str, path: str, force_update=False, type="") -> Anime:
+def get_or_create_anime(
+    db: Session,
+    name: str,
+    path: str,
+    force_update: bool = False,
+    type: str = ""
+) -> Anime:
     anime = db.query(Anime).filter_by(name=name).first()
+
     if not anime:
+        try:
+            anime_info = get_anime_info(name) or {}
+        except Exception:
+            anime_info = {}
+
         anime = Anime(
             name=name,
             path=path,
             elo=1000,
-            image_url="",
-            description="",
-            note=None,
-            status="",
+            image_url=anime_info.get("image_url", ""),
+            description=anime_info.get("description", ""),
+            note=anime_info.get("note"),
+            status=anime_info.get("status", ""),
             type=type,
-            rank=None,
-            created_at="",
-            studio=""
+            rank=anime_info.get("rank"),
+            created_at=anime_info.get("created_at"),
+            studio=anime_info.get("studio", ""),
         )
+
         db.add(anime)
         db.commit()
         db.refresh(anime)
+
     elif force_update:
+        updated = False
+
         if anime.path != path:
             anime.path = path
+            updated = True
+
+        if updated:
             db.commit()
+
     return anime
 
 # ---------------- Season ----------------
@@ -301,7 +394,8 @@ def get_next_episode_id(session: Session, episode_id: int):
         .first()
     )
     return next_episode
-def get_recently_watched(session: Session, user_id: int, limit: int = 10):
+
+def get_recently_watched(session: Session, user_id: int, limit: int = 5):
     """
     Récupère les animes regardés récemment par l'utilisateur, en incluant
     les détails complets du dernier épisode regardé.
@@ -373,6 +467,61 @@ def get_recently_watched(session: Session, user_id: int, limit: int = 10):
         for r in results
     ]
 
+def get_recently_added_episodes(db: Session, limit: int = 5):
+    """
+    Retourne les animes récemment mis à jour (sans doublons),
+    avec leurs épisodes ajoutés récemment.
+    """
+
+    # On prend plus large pour éviter qu'un seul anime prenne tout
+    EPISODE_MULTIPLIER = 5
+
+    recent_episodes = (
+        db.query(Episode, Anime)
+        .join(Season, Episode.season_id == Season.id)
+        .join(Anime, Season.anime_id == Anime.id)
+        .order_by(Episode.upload_date.desc())
+        .limit(limit * EPISODE_MULTIPLIER)
+        .all()
+    )
+
+    animes_map = {}
+
+    for episode, anime in recent_episodes:
+        # Stop dès qu'on a assez d'animes uniques
+        if len(animes_map) >= limit and anime.id not in animes_map:
+            break
+
+        if anime.id not in animes_map:
+            animes_map[anime.id] = {
+                "id": anime.id,
+                "name": anime.name,
+                "image_url": anime.image_url,
+                "recent_episodes_count": 0,
+                "recent_episodes": [],
+                "last_episode": None,
+                "next_episode": None,
+            }
+
+        anime_entry = animes_map[anime.id]
+
+        episode_data = {
+            "id": episode.id,
+            "number": episode.episode_number,
+            "name": episode.name,
+            "path": episode.path,
+        }
+
+        anime_entry["recent_episodes"].append(episode_data)
+        anime_entry["recent_episodes_count"] += 1
+
+        # Le premier épisode rencontré est le plus récent
+        if anime_entry["last_episode"] is None:
+            anime_entry["last_episode"] = episode_data
+            anime_entry["next_episode"] = get_next_episode_id(db, episode.id)
+
+    return list(animes_map.values())
+
 def get_anime_id_by_episode(db: Session, episode_id: int) -> int:
     episode = db.query(Episode).filter(Episode.id == episode_id).first()
     if not episode:
@@ -383,3 +532,44 @@ def get_anime_id_by_episode(db: Session, episode_id: int) -> int:
         return None
 
     return season.anime_id
+
+def get_anime_and_season_by_episode(db: Session, episode_id: int) -> int:
+    episode = db.query(Episode).filter(Episode.id == episode_id).first()
+    if not episode:
+        return None
+
+    season = db.query(Season).filter(Season.id == episode.season_id).first()
+    if not season:
+        return None
+    anime = db.query(Anime).filter(Anime.id == season.anime_id).first()
+    if not anime:
+        return None
+    
+    return anime, season
+
+def create_episode(
+    db: AsyncSession,
+    *,
+    season_id: int,
+    episode_number: int,
+    name: str,
+    path: str,
+):
+    episode = Episode(
+        name=name,
+        title=name,
+        season_id=season_id,
+        episode_number=episode_number,
+        path=path,
+        not_found=False,
+        upload_date=datetime.datetime.utcnow(),
+        modified_time=None,
+        audio_languages=None,
+        subtitles=None,
+    )
+
+    db.add(episode)
+    db.commit()
+    db.refresh(episode)
+
+    return episode

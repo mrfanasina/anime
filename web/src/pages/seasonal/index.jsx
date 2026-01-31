@@ -9,6 +9,7 @@ import { addWatch } from "../../controllers/watch";
 import { showToast } from "../../utils/alerts";
 import AnimeCard from "../../components/AnimeCard";
 import { ChevronLeft, ChevronRight, LayoutGrid, Grid } from "lucide-react";
+import AddSeasonalAnime from "../../components/AddAnimeSaisonier";
 
 const SeasonalPage = () => {
   const [seasonData, setSeasonData] = useState([]);
@@ -81,6 +82,7 @@ const SeasonalPage = () => {
       style={{ backgroundColor: bgColor, color: textColor }}
     >
       <TopBar />
+      <AddSeasonalAnime />
 
       <div className="pt-28 px-4 md:px-8 space-y-12">
         {/* === BARRE MODE + SAISONS === */}

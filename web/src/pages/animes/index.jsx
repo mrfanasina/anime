@@ -8,8 +8,12 @@ import { addWatch } from "../../controllers/watch";
 import { showToast } from "../../utils/alerts";
 import { getCurrentUser } from "../../controllers/auth";
 import AddAnime from "../../components/AddAnime";
+import { getAllAnimes } from "../../controllers/anime";
 
-const AnimePage = () => {   
+import { useParams } from "react-router-dom";
+
+const AnimePage = () => {
+  const { type = "ALL" } = useParams();
   const [animes, setAnimes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -22,21 +26,32 @@ const AnimePage = () => {
 
   // Charger les animés et l'utilisateur actuel
   useEffect(() => {
-    api
-      .get("/anime/")
-      .then((res) => setAnimes(res.data))
+    if (type === "ALL") {
+    getAllAnimes()
+      .then((data) => setAnimes(data))
       .catch(() => setError("Impossible de charger les animés"))
       .finally(() => setLoading(false));
-
-    async function fetchUser() {
-      try {
-        const user = await getCurrentUser();
-        setCurrentUser(user);
-      } catch (err) {
-        console.error("Impossible de récupérer l'utilisateur:", err);
-      }
+    } else if (type === "TV") {
+      api.get('/anime/type/TV')
+      .then((response) => setAnimes(response.data))
+      .catch(() => setError("Impossible de charger les animés"))
+      .finally(() => setLoading(false));
+    } else if (type === "movies") {
+      api.get('/anime/movies')
+      .then((response) => setAnimes(response.data))
+      .catch(() => setError("Impossible de charger les animés"))
+      .finally(() => setLoading(false));
+    } else {
+      getAllAnimes()
+      .then((data) => setAnimes(data))
+      .catch(() => setError("Impossible de charger les animés"))
+      .finally(() => setLoading(false));
     }
-    fetchUser();
+  }, [type]);
+  useEffect(() => {
+    getCurrentUser()
+      .then(setCurrentUser)
+      .catch(console.error);
   }, []);
 
   const SkeletonCard = () => (

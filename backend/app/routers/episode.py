@@ -13,6 +13,13 @@ def list_episodes():
     episodes = db.query(Episode).all()
     db.close()
     return [{"id": e.id, "name": e.name, "path": e.path, "season_id": e.season_id} for e in episodes]
+@router.get("/{epId}")
+def list_episodes(epId: int):
+    db = SessionLocal()
+    e = db.query(Episode).filter(Episode.id == epId).first()
+    db.close()
+    return e
+
 
 @router.get("/miss/{season_id}")
 def detect_missing_episodes(season_id: int):

@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Date
 from app.db.base import Base
 from sqlalchemy.orm import relationship
 
@@ -7,6 +7,9 @@ class Episode(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(length=255), nullable=False)
+    title = Column(String(length=255)) # Titre de l'episode
+    description = Column(String(2000)) # description de l'episode
+    date_diffusion = Column(Date) # Date de diffusion
     season_id = Column(Integer, ForeignKey("seasons.id"), nullable=False)
     episode_number = Column(Integer, nullable=False)
     path = Column(String(500), nullable=False) 

@@ -97,7 +97,7 @@ const AddAnime = () => {
 
               </div>
 
-              {/* Anime Name */}
+              {/* Anime Name */  }
               <div>
                 <label className="block text-sm mb-1">Nom de l’anime</label>
                 <input

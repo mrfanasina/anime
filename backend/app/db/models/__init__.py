@@ -2,8 +2,11 @@ from .user import User
 from .anime_genres import AnimeGenre
 from .genre import Genre
 from .anime import Anime
+from .season import Season
 from .watch import Watch
 from .watch_season import WatchSeason
 from .watch_episode import WatchEpisode
-from .season import Season
 from .episode import Episode
+from .calendar_seasons import CalendarSeason
+from .seasonal_period import SeasonalPeriod
+from .seasonal_animes import SeasonalAnime

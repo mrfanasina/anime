@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Body, Query, HTTPException, status
+import shutil
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
-from app.db.models.seasonal import SeasonalAnime
+from app.db.models.seasonal_animes import SeasonalAnime
 from app.db.models.anime import Anime
 from app.db.models.season import Season
 from app.db.models.episode import Episode
@@ -10,12 +11,16 @@ from app.db.models.watch_season import WatchSeason
 from app.db.models.watch import Watch
 from app.utils.get_anime_info import get_anime_info, update_anime_info_in_db
 from app.utils.folder import find_media_folders
-from app.crud.anime import get_all_animes, get_anime_details
+from app.utils.get_anime_info import add_new_info, update_anime_info
+from app.crud.anime import get_all_animes, get_anime_details, get_anime_and_season_by_episode, get_all_movies, update_anime_path
+from app.crud.seasonal import get_all_seasonal
+from app.db.models.seasonal_period import SeasonalPeriod
+from app.db.models.calendar_seasons import CalendarSeason
 import logging
 import os
 
 router = APIRouter()
-
+db = SessionLocal()    
 
 # -------------------------
 # Helper pour DB session
@@ -34,6 +39,15 @@ def get_animes():
     db = SessionLocal()
     try:
         animes = get_all_animes(db)
+        return animes
+    finally:
+        db.close()
+        
+@router.get("/movies")
+def get_animes():
+    db = SessionLocal()
+    try:
+        animes = get_all_movies(db)
         return animes
     finally:
         db.close()
@@ -135,6 +149,8 @@ def add_anime(name: str = Body(...), path: str = Body(...)):
         return {"message": "Anime ajouté", "anime": {"id": anime.id, "name": anime.name}}
     finally:
         db.close()
+        add_new_info()
+
 
 # -------------------------
 # Suppression d’un animé
@@ -176,47 +192,48 @@ def update_all_anime_info():
 
 
 @router.post("/update-info/{anime_id}")
-def update_anime_info(anime_id: int):
+def update_info(anime_id: int):
     """Met à jour les infos d'un anime spécifique"""
     db = SessionLocal()
     try:
         anime = db.query(Anime).filter_by(id=anime_id).first()
         if not anime:
             return {"error": "Anime introuvable"}
-        info = get_anime_info(anime.name)
-        if not info:
-            return {"error": f"Aucune info trouvée pour {anime.name}"}
-        update_anime_info_in_db(db, anime.id, info)
-        db.refresh(anime)
-        return {"message": f"Infos mises à jour pour {anime.name}"}
+        update_anime_info(anime, db=db) 
+        
     finally:
         db.close()
 
-#Seasonal Anime
-@router.get("/seasonal/with-season-name")
+
+
+
+@router.get("/seasonal")
 def get_seasonal():
     db = SessionLocal()
     try:
-        # On récupère toutes les entrées seasonal
-        seasonal_records = db.query(SeasonalAnime).all()
+        rows = (
+            db.query(SeasonalAnime, Anime, SeasonalPeriod, CalendarSeason)
+            .join(Anime, Anime.id == SeasonalAnime.anime_id)
+            .join(SeasonalPeriod, SeasonalPeriod.id == SeasonalAnime.seasonal_period_id)
+            .join(CalendarSeason, CalendarSeason.id == SeasonalPeriod.calendar_season_id)
+            .all()
+        )
 
-        # Dictionnaire regroupé par "season_name"
         seasonal_map = {}
 
-        for entry in seasonal_records:
-            anime = db.query(Anime).filter_by(id=entry.anime_id).first()
-            if not anime:
-                continue
+        for sa, anime, period, season in rows:
+            key = f"{season.code}-{period.year}"
 
-            season_name = entry.season_name
-
-            if season_name not in seasonal_map:
-                seasonal_map[season_name] = {
-                    "season_name": season_name,
+            if key not in seasonal_map:
+                seasonal_map[key] = {
+                    "season_code": season.code,
+                    "season_name": season.name,
+                    "year": period.year,
+                    "is_current": period.is_current,
                     "animes": []
                 }
 
-            seasonal_map[season_name]["animes"].append({
+            seasonal_map[key]["animes"].append({
                 "id": anime.id,
                 "anime_id": anime.id,
                 "name": anime.name,
@@ -229,8 +246,11 @@ def get_seasonal():
                 "studio": anime.studio,
             })
 
-        # Retourner sous forme de liste
-        return list(seasonal_map.values())
+        return sorted(
+            seasonal_map.values(),
+            key=lambda x: (x["year"], x["season_code"]),
+            reverse=True
+        )
 
     finally:
         db.close()
@@ -243,3 +263,83 @@ def get_folders():
     """Retourne la liste des dossiers médias disponibles"""
     folders = find_media_folders()
     return [{"path": f, "folder": folders[f]} for f in folders]
+
+# -------------------------
+#  Récupérer un Anime par episodeId
+# -------------------------
+@router.get("/episode/{episode_id}")
+def get_anime_by_episode(episode_id: int):
+    db = SessionLocal()    
+    anime, season = get_anime_and_season_by_episode(db, episode_id)
+    return {
+        "anime": anime,
+        "season": season
+    }
+@router.post("/move/{anime_id}", status_code=status.HTTP_200_OK)
+def move_anime(anime_id: int, path: str = Body(..., embed=True)):
+    """
+    Crée un nouveau dossier pour l'anime.
+    Si l'ancien dossier existe, son contenu est déplacé.
+    Met à jour le chemin en base.
+    """
+
+    #  Récupération anime
+    anime = db.query(Anime).filter(Anime.id == anime_id).first()
+    if not anime:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Anime introuvable."
+        )
+
+    if not path or not path.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Le chemin fourni est invalide."
+        )
+
+    #  Chemins
+    old_path = anime.path
+    new_path = os.path.join(path, anime.name)
+
+    #  Création du nouveau dossier (toujours)
+    try:
+        os.makedirs(new_path, exist_ok=True)
+    except OSError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Impossible de créer le dossier cible : {str(e)}"
+        )
+
+    # Déplacement du contenu si l'ancien dossier existe
+    if old_path and os.path.exists(old_path) and old_path != new_path:
+        try:
+            for item in os.listdir(old_path):
+                src = os.path.join(old_path, item)
+                dst = os.path.join(new_path, item)
+                shutil.move(src, dst)
+
+            # Suppression de l'ancien dossier (s'il est vide)
+            try:
+                os.rmdir(old_path)
+            except OSError:
+                pass  # sécurité : dossier non vide ou déjà supprimé
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Erreur lors du déplacement du contenu : {str(e)}"
+            )
+
+    # Mise à jour DB (source de vérité)
+    anime.path = new_path
+    db.commit()
+    db.refresh(anime)
+
+    return {
+        "message": "Anime déplacé avec succès.",
+        "anime": {
+            "id": anime.id,
+            "name": anime.name,
+            "path": anime.path
+        }
+    }

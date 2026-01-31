@@ -201,7 +201,7 @@ export default function HomePage() {
             {
               title: "Nouveaux épisodes",
               icon: <Play size={20} />,
-              data: res.data.newEpisodes || [],
+              data: res.data.recently_added_animes || [],
             },
             {
               title: "Top notés",
@@ -309,9 +309,6 @@ export default function HomePage() {
         isOpen={isPlaying}
         onClose={() => setIsPlaying(false)}
       />
-
-      {user && user.id ? (
-        <div className="p-4 space-y-10">
           {/* --- Section "Continuer à regarder" (Slider/Carousel) --- */}
           {totalSlides > 0 && (
             <div className="relative">
@@ -327,6 +324,10 @@ export default function HomePage() {
               </div>
             </div>
           )}
+          
+      {user && user.id ? (
+        <div className="p-4 space-y-10">
+
 
           {sections.map(
             (section) =>

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from app.db.session import get_db
-from app.crud.anime import get_recently_watched
+from app.crud.anime import get_recently_added_episodes, get_recently_watched
 
 router = APIRouter()
 
@@ -110,16 +110,33 @@ def get_home_data(user_id: int, db: Session = Depends(get_db)):
         ORDER BY MAX(we.watched_at) DESC
         LIMIT 10
     """)
+    # Episode ajouté recement (date d'ajout de l'episode)
 
+    # Anime ajouté recement
+    recently_added_animes_query = text("""
+        SELECT 
+            a.id AS id,
+            a.name AS name,
+            a.image_url AS image_url,
+            a.created_at AS created_at
+        FROM animes a
+        WHERE a.created_at > DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ORDER BY a.created_at DESC
+        LIMIT 10
+    """)
+
+    recently_added_episodes = get_recently_added_episodes(db)
     # ⚙️ Exécution des requêtes
     continue_watching = continue_watching_query
     new_episodes = [dict(row._mapping) for row in db.execute(new_episodes_query)]
     top_rated = [dict(row._mapping) for row in db.execute(top_rated_query)]
     not_watched = [dict(row._mapping) for row in db.execute(not_watched_query, {"user_id": user_id})]
     finished = [dict(row._mapping) for row in db.execute(finished_query, {"user_id": user_id})]
-
+    recently_added_animes = [dict(row._mapping) for row in db.execute(recently_added_animes_query)]
+    
     return {
-        "continueWatching": continue_watching,
+        "continueWatching": continue_watching + recently_added_episodes,
+        "recently_added_animes": recently_added_animes,
         "newEpisodes": new_episodes,
         "topRated": top_rated,
         "notWatched": not_watched,

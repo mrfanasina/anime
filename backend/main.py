@@ -5,19 +5,20 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import traceback
-
+from app.utils.get_anime_info import update_all_seasonal_anime_info
 from app.db.init_db import init_db
 from app.utils.mount import mount_hdd, mount_other_disks
 from app import sync
 from app.routers import (
     auth, home, anime, season, episode,
-    stats, player, watch, sync as sync_routes, downloader as downloader_router
+    stats, player, watch, sync as sync_routes, downloader as downloader_router, system
 )
 
 
 # ================== INIT DB ==================
 print("🗄️ Initialisation de la base...")
 init_db()
+
 
 
 # ================== FASTAPI APP ==================
@@ -31,6 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(system.router, prefix="/system", tags=["System"])
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(anime.router, prefix="/anime", tags=["Anime"])
 app.include_router(season.router, prefix="/season", tags=["Season"])
@@ -55,13 +57,18 @@ def get_args():
 
     parser.add_argument("-ss", "--seasonal-sync", action="store_true",
                         help="Synchroniser UNIQUEMENT les animés saisonniers.")
-
+    parser.add_argument("-se", "--externe-sync", action="store_true",
+                        help="Synchroniser les animés qui utilise les app externes, et genere un QRCode  pour syncrhoniser.")
     parser.add_argument("--get-info", action="store_true",
                         help="Récupérer infos anime après lancement du serveur.")
+    parser.add_argument("-i", "--get-new-info", action="store_true",
+                        help="Récupérer infos anime après lancement du serveur.")
+    parser.add_argument("-is", "--get-seasonal-info", action="store_true",
+                        help="Récupérer infos  anime saisonnier après lancement du serveur.")
 
     parser.add_argument("--no-server", "--headless",
                         action="store_true",
-                        help="Ne pas lancer le serveur (mode headless).")
+                        help="Ne pas lancer le serveur (mode headless).")  
 
     return parser.parse_args()
 
@@ -97,7 +104,14 @@ def main():
             print("🌐 Get-info...")
             from app.utils import get_anime_info as mal_info
             mal_info.update_all_anime_info()
-
+        if args.get_new_info: 
+            print("🌐 Get-new-info...")
+            from app.utils import get_anime_info as mal_info
+            mal_info.add_new_info()
+        if args.get_seasonal_info:
+            print("🌐 Get-seasonal-info...")
+            from app.utils import get_anime_info as mal_info
+            mal_info.update_all_seasonal_anime_info()
         print("🏁 Tâches terminées (mode headless).")
         return
 
@@ -144,6 +158,22 @@ def main():
             print("✅ Infos récupérées")
         except Exception as e:
             print("❌ Erreur get-info :", e)
+            traceback.print_exc()
+    if args.get_new_info: 
+        try:
+            from app.utils import get_anime_info as mal_info
+            mal_info.add_new_info()
+            print("✅ Infos récupérées")
+        except Exception as e:
+            print("❌ Erreur get-info :", e)
+            traceback.print_exc()
+    if args.get_seasonal_info:
+        try:
+            from app.utils import get_anime_info as mal_info
+            mal_info.update_all_seasonal_anime_info()
+            print("✅ Infos saisonnières récupérées")
+        except Exception as e:
+            print("❌ Erreur get-seasonal-info :", e)
             traceback.print_exc()
 
     # Le serveur continue à tourner

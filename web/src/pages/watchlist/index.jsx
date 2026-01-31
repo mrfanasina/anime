@@ -12,6 +12,7 @@ import { getAnimeById } from "../../controllers/anime.js";
 import TopBar from "../../components/TopBar.jsx";
 import { useNavigate } from "react-router-dom";
 import noImage from "../../assets/no-image-dark.png";
+
 import {
   Play,
   Info,
@@ -19,7 +20,6 @@ import {
   X,
   Bookmark,
   Trash2,
-  Loader2,
 } from "lucide-react";
 import { showToast, showConfirm } from "../../utils/alerts";
 
@@ -159,6 +159,38 @@ const WatchListPage = () => {
     (a, b) => (a.completed === b.completed ? 0 : a.completed ? 1 : -1)
   );
 
+  const SkeletonCard = () => (
+    <div className="rounded-2xl overflow-hidden border shadow-md animate-pulse bg-gray-200 dark:bg-gray-800 border-gray-300 dark:border-gray-700">
+      <div className="flex flex-col sm:flex-row">
+        {/* Image skeleton */}
+        <div className="sm:w-[160px] w-full h-[230px] sm:h-auto bg-gray-300 dark:bg-gray-700" />
+
+        {/* Content skeleton */}
+        <div className="flex-1 p-4 space-y-4">
+          {/* Title + status */}
+          <div className="flex justify-between items-start">
+            <div className="h-6 w-48 bg-gray-300 dark:bg-gray-700 rounded" />
+            <div className="h-6 w-20 bg-gray-300 dark:bg-gray-700 rounded-full" />
+          </div>
+
+          {/* Description lines */}
+          <div className="space-y-2">
+            <div className="h-4 w-full bg-gray-300 dark:bg-gray-700 rounded" />
+            <div className="h-4 w-11/12 bg-gray-300 dark:bg-gray-700 rounded" />
+            <div className="h-4 w-4/5 bg-gray-300 dark:bg-gray-700 rounded" />
+          </div>
+
+          {/* Buttons */}
+          <div className="flex flex-wrap gap-3 pt-2">
+            <div className="h-8 w-28 bg-gray-300 dark:bg-gray-700 rounded-full" />
+            <div className="h-8 w-32 bg-gray-300 dark:bg-gray-700 rounded-full" />
+            <div className="h-8 w-24 bg-gray-300 dark:bg-gray-700 rounded-full" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div
       className="min-h-screen transition-colors duration-500"
@@ -171,12 +203,11 @@ const WatchListPage = () => {
             Connecte-toi pour voir ta watch-list.
           </p>
         )}
-
-        {user && loading && (
-          <div className="flex justify-center items-center py-10">
-            <Loader2 className="animate-spin text-gray-500" size={32} />
-          </div>
-        )}
+        {user && loading &&
+          Array.from({ length: 8 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))
+        }
 
         {user && !loading && watchList.length === 0 && (
           <p className="text-gray-500 text-center text-lg">

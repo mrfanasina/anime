@@ -36,7 +36,6 @@ export const getAnimeById = async (id, userId) => {
     params: { userId }
   });
   console.log(userId);
-  
   return response.data;
 }
 
@@ -44,26 +43,36 @@ export const listAnimes = async () => {
   const response = await api.get('/anime/all');
   return response.data;
 }
+export const getAllAnimes = async () => {
+  const response = await api.get('/anime/');
+  return response.data;
+}
 
 export const getSeasonal = async () => {
-  const response = await api.get('/anime/seasonal/with-season-name');
+  const response = await api.get('/anime/seasonal');
   return response.data;
 }
 
 export const getFolders = async () => {
   const response = await api.get('/anime/folders/all');
   return response
-
 }
-export const playAnimePlaylist = (episodeIds, userId, onEvent) => {
-  // 1. lancer la playlist
-  fetch(`${API_URL}player/play-playlist?userId=${userId}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ episode_ids: episodeIds })
-  });
+export const playAnimePlaylist = async (episodeIds, userId, onEvent) => {
+  // 1️⃣ start playlist and WAIT
+  const res = await fetch(
+    `${API_URL}player/play-playlist?userId=${userId}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ episode_ids: episodeIds })
+    }
+  );
 
-  // 2. écouter le SSE
+  if (!res.ok) {
+    throw new Error("Failed to start playlist");
+  }
+
+  // 2️⃣ now SSE (MPV is ready or almost ready)
   const sse = new EventSource(
     `${API_URL}player/play-playlist/stream?userId=${userId}`,
     { withCredentials: true }
@@ -72,13 +81,40 @@ export const playAnimePlaylist = (episodeIds, userId, onEvent) => {
   sse.onmessage = (e) => {
     if (!e.data) return;
     try {
-      const parsed = JSON.parse(e.data);
-      console.log("SSE data:", parsed);
-      onEvent(parsed);
-    } catch (err) {
-      console.error("SSE parse error", err);
-    }
+      onEvent(JSON.parse(e.data));
+    } catch {}
   };
 
   return sse;
 };
+
+
+export const getEpisodeById = async (epId) => {
+  const response = await api.get(`/episode/${epId}`);
+  return response.data
+}
+
+export const getAnimeByEpId = async (epId) => {
+  const response = await api.get(`/anime/episode/${epId}`);
+  return response.data
+}
+
+export const getBackUrl = async () => {
+  const response = await api.get('/system/backUrl');
+  return response.data;
+}
+
+export const moveAnime = async (animeId, newPath) => {
+  const response = await api.post(`/anime/move/${animeId}`, { path: newPath });
+  return response.data;
+}
+
+export const updateAnimeInfo = async (animeId) => {
+  const response = await api.post(`/anime/update-info/${animeId}`);
+  return response.data;
+}
+
+export const updateAllAnimeInfo = async () => {
+  const response = await api.get(`/anime/update-info/all`);
+  return response.data;
+}

@@ -80,11 +80,15 @@ const App = () => {
             <HomePage />
           </Suspense>
         } />
-        <Route path="/anime" element={
-          <Suspense fallback={<Loader/>}>
-            <AnimePage />
-          </Suspense>
-        } />
+        <Route
+          path="/anime/:type?"
+          element={
+            <Suspense fallback={<Loader />}>
+              <AnimePage />
+            </Suspense>
+          }
+        />
+
         <Route path="/duel" element={
           <Suspense fallback={<Loader/>}>
             <DuelPage />

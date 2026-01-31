@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Boolean, Column, Integer, String
 from ..base import Base
 from sqlalchemy.orm import relationship
 
@@ -22,8 +22,9 @@ class Anime(Base):
     created_at = Column(String(50)) # Date de création de l'animé (mois et année)
     studio = Column(String(255)) # Studio de production
     seasons_count = Column(Integer, default=0) # Nombre de saisons
-    seasons = Column(String(255)) # winter, spring, summer, fall 
-    
+    seasons_diff = Column(String(255)) # winter, spring, summer, fall 
+    fromPc = Column(Boolean, default=True, nullable=False) # Indique si l'animé provient du PC ou d'une source externe
+
     # Relation
     watchers = relationship("Watch", back_populates="anime", cascade="all, delete")
     seasons = relationship("Season", back_populates="anime", cascade="all, delete")

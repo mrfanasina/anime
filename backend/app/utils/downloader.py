@@ -1,81 +1,76 @@
 import asyncio
 import libtorrent as lt
 import os
-import logging
-from logging.handlers import RotatingFileHandler
 from fastapi import WebSocket
+from app.db.session import SessionLocal
+from app.utils.extract import extract_episode_number
 from app.utils.folder import get_download_folder
+from app.crud.anime import create_episode
 
-# === LOG SETUP ===
-log_file = "torrent_downloads.log"
-logger = logging.getLogger("torrent")
-logger.setLevel(logging.INFO)
-
-handler = RotatingFileHandler(log_file, maxBytes=5*1024*1024, backupCount=3)
-formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
 
 async def download_episode(torrent_magnet: str, season_id: int, websocket: WebSocket):
-    logger.info(f"Start download | season={season_id} | magnet={torrent_magnet}")
+    db = SessionLocal()
+
+    ses = lt.session()
+    ses.listen_on(6881, 6891)
+
+    download_path = get_download_folder(season_id)
+
+    params = {
+        "save_path": download_path,
+        "storage_mode": lt.storage_mode_t.storage_mode_sparse,
+    }
+
+    handle = lt.add_magnet_uri(ses, torrent_magnet, params)
+
+    # 1️⃣ Attendre les metadata
+    while not handle.has_metadata():
+        await asyncio.sleep(0.3)
+
+    torrent_info = handle.get_torrent_info()
+    filename = torrent_info.name()
+
+    episode_number = extract_episode_number(filename)
+
+    episode = create_episode(
+        db=db,
+        season_id=season_id,
+        episode_number=episode_number,
+        name=filename,
+        path=os.path.join(download_path, filename),
+    )
 
     try:
-        folder_download = get_download_folder(season_id)
-        if not folder_download:
-            raise ValueError(f"Saison {season_id} introuvable — dossier introuvable")
-
-        os.makedirs(folder_download, exist_ok=True)
-
-        ses = lt.session()
-        ses.listen_on(6881, 6891)
-
-        if torrent_magnet.startswith("magnet:"):
-            params = {"save_path": folder_download, "storage_mode": lt.storage_mode_t(2)}
-            handle = lt.add_magnet_uri(ses, torrent_magnet, params)
-        else:
-            ti = lt.torrent_info(torrent_magnet)
-            handle = ses.add_torrent({"ti": ti, "save_path": folder_download})
-
-        await websocket.send_json({"message": "Downloading...", "folder": folder_download})
-
+        # 2️⃣ Boucle de téléchargement réel
         while not handle.is_seed():
-            s = handle.status()
+            status = handle.status()
 
-            progress = round(s.progress * 100, 2)
-            down_rate = round(s.download_rate / 1000, 1)
-            up_rate = round(s.upload_rate / 1000, 1)
-            peers = s.num_peers
-            state = str(s.state).split('.')[-1]
-
-            # Console + log
-            msg = f"{progress}% | ↓ {down_rate} kB/s | ↑ {up_rate} kB/s | peers={peers} | state={state}"
-            print(msg)
-            logger.info(msg)
+            progress = round(status.progress * 100, 2)
 
             await websocket.send_json({
+                "state": "downloading",
                 "progress": progress,
-                "state": state,
-                "download_kBps": down_rate,
-                "upload_kBps": up_rate,
-                "peers": peers
+                "episode_id": episode.id,
+                "download_rate": status.download_rate,
+                "peers": status.num_peers,
             })
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.5)
 
-        # End
-        logger.info(f"Download finished | season={season_id}")
+        # 3️⃣ Terminé
         await websocket.send_json({
-            "progress": 100,
             "state": "seeding",
-            "message": "Téléchargement terminé ✅"
+            "progress": 100,
+            "episode_id": episode.id,
         })
 
     except Exception as e:
-        logger.error(f"Error during download | season={season_id} | {e}")
         await websocket.send_json({
             "state": "error",
-            "message": f"Erreur: {str(e)}"
+            "message": str(e),
+            "episode_id": episode.id,
         })
 
     finally:
         await websocket.close()
+        await db.close()

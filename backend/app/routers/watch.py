@@ -82,7 +82,6 @@ def patch_watch_season(watch_season_id: int, payload: WatchSeasonCreate = Body(.
 def delete_watch_season(watch_season_id: int, db: Session = Depends(get_db)):
     return crud_wseason.delete_watch_season(db, watch_season_id)
 
-
 # -------------------------
 # WatchEpisode (sous-ressource)
 # -------------------------
@@ -194,3 +193,45 @@ def complete_watch_season(watch_season_id: int, db: Session = Depends(get_db)):
 @router.post("/complete/anime", response_model=WatchOut)
 def complete_watch_anime(payload: WatchAnimeComplet, db: Session = Depends(get_db)):
     return crud_watch.complete_watch_anime(db, payload.user_id, payload.anime_id)
+
+# -------------------------
+# Mette à jour le status watched d'un watchEpisode grace a un episode_id
+# -------------------------
+@router.patch("/episode/by-episode-id", response_model=WatchEpisodeOut)
+def update_watch_episode_by_episode_id(payload: WatchEpisodeCreate, db: Session = Depends(get_db)):
+    """
+    Met à jour le statut 'watched' d'un épisode en utilisant episode_id.
+    Crée la watch, la saison et l'épisode si nécessaire.
+    """
+    # Récupérer automatiquement anime_id
+    anime_id = payload.anime_id
+    if anime_id is None:
+        anime_id = crud_anime.get_anime_id_by_episode(db, payload.episode_id)
+        if anime_id is None:
+            raise HTTPException(400, "Impossible de retrouver l'anime depuis episode_id")
+    print(f"anime_id = {anime_id}")
+
+    # Et corrige le payload en interne
+    payload.anime_id = anime_id
+
+    # Vérifier si watch existe pour l'anime
+    watch = crud_watch.get_watch_by_user_anime(db, payload.user_id, payload.anime_id)
+    if not watch:
+        watch = crud_watch.create_watch(db, user_id=payload.user_id, payload=WatchCreate(user_id=payload.user_id, anime_id=payload.anime_id, status="watching"))
+
+    # Vérifier si watch_season existe pour la saison
+    season = crud_wseason.get_watch_season_by_watch_and_season(db, watch.id, payload.season_id)
+    if not season:
+        season = crud_wseason.create_watch_season(db, watch_id=watch.id, season_id=payload.season_id, completed=False)
+
+    # Ajouter ou mettre à jour l'épisode
+    try:
+        episode = crud_wep.create_watch_episode(db, watch_season_id=season.id, episode_id=payload.episode_id, watched=payload.watched)
+    except HTTPException as e:
+        if e.status_code == status.HTTP_400_BAD_REQUEST:
+            # déjà existant → update
+            episode = crud_wep.update_watch_episode(db, watch_episode_id=e.detail["id"], watched=payload.watched)
+        else:
+            raise e
+
+    return episode

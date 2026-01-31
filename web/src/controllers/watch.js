@@ -134,3 +134,14 @@ export const addWatchEpisode = async (userId, episode_id, watched=false) => {
     "watched": watched,
   });
 }
+export const putWatchEpisode = async (watchEpisodeId, watched) => {
+  api.put(`/watch/episode/${watchEpisodeId}`, { watched });
+}
+
+export const updateWatchEpisode = async (watchEpisodeId, watched, position, duration, finished) => {
+  api.patch(`/watch/episode/${watchEpisodeId}`, { watched, position, duration, finished });
+}
+
+export const removeWatchEpisode = async (watchEpisodeId) => {
+  api.delete(`/watch/episode/${watchEpisodeId}`);
+}

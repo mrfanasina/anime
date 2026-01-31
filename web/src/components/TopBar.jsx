@@ -10,6 +10,7 @@ import {
   UserPlus,
   LogOut,
   User,
+  QrCode,
 } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
 import SettingsModal from './SettingsModal';
@@ -17,13 +18,16 @@ import adjustColor from '../utils/adjustColor';
 import { setMode } from '../redux/themeSlice';
 import { getCurrentUser } from '../controllers/auth';
 import api from '../services/api';
+import PairingModal from './PairingModal';
+import { getBackUrl } from '../controllers/anime';
 
 const navLinks = [
   { to: '/home', label: 'Home' },
   { to: '/anime', label: 'Animes' },
-  { to: '/duel', label: 'Duel' },
-  { to: '/watch-list', label: 'Watch-List' },
+  { to: '/anime/movies', label: 'Movies' },
   { to: '/seasonal', label: 'Seasonal' },
+  { to: '/watch-list', label: 'Watch-List' },
+  { to: '/duel', label: 'Duel' },
 ];
 
 export default function TopBar() {
@@ -39,9 +43,22 @@ export default function TopBar() {
   const [modalOpen, setModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [isFocused, setIsFocused] = useState(false);
-
+  const [pairingModalOpen, setPairingModalOpen] = useState(false);
   const searchInputRef = useRef(null);
+  const [apiUrl, setApiUrl] = useState('');
 
+  // 🔹 Récupérer l'URL du back-end pour le QR code
+  useEffect(() => {
+    async function fetchBackUrl() {
+      try {
+        const data = await getBackUrl();
+        setApiUrl(data.backUrl);
+      } catch (err) {
+        console.error('Erreur lors de la récupération de l\'URL du back-end :', err);
+      }
+    }
+    fetchBackUrl();
+  }, []);
   const activeColor =
     mode === 'dark'
       ? adjustColor(primaryColors.main, 40)
@@ -146,11 +163,10 @@ export default function TopBar() {
           </Link>
 
           {/* Navigation */}
-          <nav className="hidden md:flex items-center gap-6">
+          <nav className="hidden md:flex items-center gap-4">
             {navLinks.map((link) => {
               const isActive =
-                location.pathname === link.to ||
-                (link.to !== '/' && location.pathname.startsWith(link.to));
+                location.pathname === link.to
               return (
                 <Link key={link.to} to={link.to}>
                   <div
@@ -320,7 +336,13 @@ export default function TopBar() {
                 </Link>
               </>
             )}
-
+            <button
+              onClick={() => setPairingModalOpen(true)}
+              aria-label="Pour se connecter avec l'application mobile"
+              className="p-2 rounded-full transition-transform"
+            >
+              <QrCode size={20} style={{ color: textColor }} />
+            </button>
             <button
               onClick={() => setModalOpen(true)}
               className="p-2 rounded-full hover:rotate-45 transition-transform"
@@ -331,7 +353,7 @@ export default function TopBar() {
           </div>
         </div>
       </div>
-
+      <PairingModal isOpen={pairingModalOpen} onClose={() => setPairingModalOpen(false)} apiUrl={apiUrl} />
       <SettingsModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
     </>
   );

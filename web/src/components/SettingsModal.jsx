@@ -11,7 +11,7 @@ export default function SettingsModal({ isOpen, onClose }) {
   const dispatch = useDispatch();
   const { mode, primaryColors, secondaryColors } = useSelector(
     state => state.theme
-  );
+  );  
 
   const [original, setOriginal] = useState({});
   const [tempMode, setTempMode] = useState(mode);

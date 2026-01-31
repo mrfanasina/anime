@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useSelector } from "react-redux";
-import { Play, Pause, Download, Volume2, Maximize, Loader2, Zap, Link, Minimize } from 'lucide-react';
+import { Play, Pause, Download, Volume2, Maximize, Loader2, Zap, Link, Minimize, QrCode } from 'lucide-react';
 import { showToast } from "../utils/alerts"; // Assurez-vous que showToast est bien implémenté
+import PairingModal from "./PairingModal";
 
-const VideoPlayerWithHeader = ({ episodeId, apiUrl, animeName }) => {
+const VideoPlayerWithHeader = ({ episode, apiUrl, anime, season }) => {
     // Récupération des données du thème
     const { mode, primaryColors } = useSelector((state) => state.theme);
     const isDark = mode === "dark";
@@ -24,9 +25,10 @@ const VideoPlayerWithHeader = ({ episodeId, apiUrl, animeName }) => {
     const controlTimeoutRef = useRef(null);
     const progressRef = useRef(null); // Ref pour la barre de progression
 
-    const streamUrl = `${apiUrl}/stream/${episodeId}`;
-    const downloadUrl = `${apiUrl}/download/${episodeId}`;
-
+    const streamUrl = `${apiUrl}/stream/${episode.id}`;
+    const downloadUrl = `${apiUrl}/download/${episode.id}`;
+    const [pairingModalOpen, setPairingModalOpen] = useState(false);
+    
     // Couleur d'accentuation pour la personnalisation
     const accentColor = primaryColors.accent || '#10b981';
 
@@ -222,6 +224,9 @@ const VideoPlayerWithHeader = ({ episodeId, apiUrl, animeName }) => {
             showToast("Échec de la copie de l'URL du flux.", 'error');
         });
     };
+    const openPairingModal = () => {
+        setPairingModalOpen(true);
+    };
 
     // --- Effets pour gérer les écouteurs d'événements ---
     useEffect(() => {
@@ -289,6 +294,7 @@ const VideoPlayerWithHeader = ({ episodeId, apiUrl, animeName }) => {
 
     const isVideoLoading = isLoading || isBuffering;
     const inverseStyle = (current) => current === 0 ? currentTime : 0;
+
     return (
         <div
             className={`min-h-screen flex flex-col items-center justify-start py-8 transition-colors duration-300 ${
@@ -299,13 +305,15 @@ const VideoPlayerWithHeader = ({ episodeId, apiUrl, animeName }) => {
             <header
                 className="w-full max-w-5xl mb-8 p-8 rounded-2xl shadow-2xl transition-all duration-300"
                 style={{
-                    background: `linear-gradient(135deg, ${primaryColors.main || '#3b82f6'} 0%, ${accentColor} 100%)`,
-                    color: "white",
+                    background: `linear-gradient(135deg, ${primaryColors.main + "60" || '#3b82f6'} 0%, ${accentColor + "60"} 100%)`,
                 }}
             >
-                <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight">{animeName}</h1>
+                <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight">{anime?.name} {season?.name}</h1>
                 <p className="mt-2 text-lg sm:text-xl font-light opacity-90">
-                    Épisode **{episodeId}**
+                    Épisode {episode.episode_number} : {episode.name}
+                </p>
+                <p className="mt-2 text-lg sm:text-xl font-light opacity-90">
+                    Langues: {episode.audio_languages} - Sous-titres: {episode.subtitles}
                 </p>
                 <div className="mt-6 pt-4 border-t border-opacity-30 flex flex-wrap gap-3" style={{ borderColor: 'rgba(255,255,255,0.3)' }}>
                     <a
@@ -326,9 +334,18 @@ const VideoPlayerWithHeader = ({ episodeId, apiUrl, animeName }) => {
                         <Link size={18} />
                         <span>Copier l'URL du Flux</span>
                     </button>
+                    <button
+                        style={{ backgroundColor: accentColor, boxShadow: `0 4px 10px rgba(0,0,0,0.2)` }}
+                        onClick={setPairingModalOpen.bind(this, true)}
+                        className="inline-flex items-center rounded-full space-x-2 px-6 py-3 text-sm font-semibold transition-all duration-300 transform hover:scale-[1.03] hover:shadow-xl"
+                    >
+                        <QrCode size={18} />
+                        <span>Scanner le QR Code</span>
+                    </button>
+
                 </div>
-                <div className="mt-4 text-sm italic opacity-80 p-3 rounded-lg bg-opacity-10">
-                    💡 **Conseil Pro:** Si la lecture présente des problèmes, copiez l'URL du Flux et ouvrez-le directement dans un lecteur vidéo externe comme **VLC** (Média &gt; Ouvrir un flux réseau...).
+                <div className="mt-4 text-sm opacity-80 p-3 rounded-lg bg-opacity-10">
+                    💡 Conseil: Si la lecture présente des problèmes, copiez l'URL du Flux et ouvrez-le directement dans un lecteur vidéo externe comme **VLC** (Média &gt; Ouvrir un flux réseau...).
                 </div>
             </header>
 
@@ -496,6 +513,8 @@ const VideoPlayerWithHeader = ({ episodeId, apiUrl, animeName }) => {
                 <Zap size={14} className={isDark ? 'text-yellow-400' : accentColor} />
                 <span>**Raccourcis Clavier :** **Espace** (Play/Pause), **F** (Plein écran), **Flèches Gauche/Droite** (Avancer/Reculer 5s), **Flèches Haut/Bas** (Volume).</span>
             </div>
+            {/* <PairingModal isOpen={pairingModalOpen} onClose={() => setPairingModalOpen(false)} apiUrl={apiUrl} /> */}
+            <PairingModal isOpen={pairingModalOpen} onClose={() => setPairingModalOpen(false)} apiUrl={streamUrl} />
         </div>
     );
 };
