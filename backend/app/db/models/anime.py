@@ -1,4 +1,5 @@
 from sqlalchemy import Boolean, Column, Integer, String
+from app.db.models.anime_links import anime_links
 from ..base import Base
 from sqlalchemy.orm import relationship
 
@@ -24,8 +25,18 @@ class Anime(Base):
     seasons_count = Column(Integer, default=0) # Nombre de saisons
     seasons_diff = Column(String(255)) # winter, spring, summer, fall 
     fromPc = Column(Boolean, default=True, nullable=False) # Indique si l'animé provient du PC ou d'une source externe
-
+    status_on_disk = Column(String(50)) # Indiquer si l'anime est complet, incomplet, ou vide
+    
+    
     # Relation
     watchers = relationship("Watch", back_populates="anime", cascade="all, delete")
     seasons = relationship("Season", back_populates="anime", cascade="all, delete")
     genres = relationship("Genre", secondary="anime_genres", back_populates="animes")
+    related_animes = relationship(
+        "Anime",
+        secondary=anime_links,
+        primaryjoin=id == anime_links.c.anime_id,
+        secondaryjoin=id == anime_links.c.related_id,
+        backref="related_to"
+    )
+    locations = relationship("AnimeLocation", back_populates="anime", cascade="all, delete")

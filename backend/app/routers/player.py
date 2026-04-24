@@ -365,7 +365,7 @@ async def play_playlist(
 
 
 @router.get("/play-playlist/stream")
-async def play_playlist_stream():
+async def play_playlist_swatch_episode_maptream():
     async def event_stream():
         while not os.path.exists(MPV_SOCKET):
             await asyncio.sleep(0.1)

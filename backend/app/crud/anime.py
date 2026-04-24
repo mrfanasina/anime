@@ -18,10 +18,52 @@ from app.utils.extract import extract_episode_number, extract_season_number
 from app.utils.folder import find_media_folders
 from app.db.models.seasonal_animes import SeasonalAnime
 
-# ---------------- Tout les animes ----------------
-def get_all_animes(db: Session):
-    return db.query(Anime).all()
+def getSeasons(db :Session, anime_id):
+    return db.query(Season).filter_by(anime_id=anime_id).all()
 
+def get_all_animes(db: Session):
+    animes = db.query(Anime).all()
+
+    result = []
+
+    for anime in animes:
+        has_episodes = any(
+            season.episodes for season in anime.seasons
+        )
+
+        result.append({
+            # ─── champs principaux ───
+            "id": anime.id,
+            "name": anime.name,
+            "title_nihon": anime.title_nihon,
+            "title_english": anime.title_english,
+            "title_romaji": anime.title_romaji,
+            "path": anime.path,
+            "elo": anime.elo,
+            "image_url": anime.image_url,
+            "description": anime.description,
+            "synopsis": anime.synopsis,
+            "note": anime.note,
+            "status": anime.status,
+            "type": anime.type,
+            "rank": anime.rank,
+            "created_at": anime.created_at,
+            "studio": anime.studio,
+            "seasons_count": anime.seasons_count,
+            "seasons_diff": anime.seasons_diff,
+            "fromPc": anime.fromPc,
+        
+
+            # ─── relations utiles ───
+            "watchers_count": len(anime.watchers) if anime.watchers else 0,
+            "genres": [g.name for g in anime.genres] if anime.genres else [],
+            "status_on_disk": anime.status_on_disk,
+            # ─── logique custom ───
+            "is_empty": not has_episodes,
+        })
+
+    return result
+ 
 # mise à du path de l'anime
 def update_anime_path(db: Session, anime_id: int, new_path: str):
     anime = db.query(Anime).filter_by(id=anime_id).first()
@@ -40,6 +82,10 @@ def get_all_movies(db: Session):
         else:
             movie.is_on_disk = False
     return movies
+
+def get_all_tv(db: Session):
+    tv_shows = db.query(Anime).filter_by(type="TV").all()
+    return tv_shows
 
 def is_movie_on_disk(path: str) -> bool:
     if not path or not os.path.exists(path):
@@ -242,17 +288,22 @@ def get_anime_details(db: Session, anime_id: int, user_id: int | None = None):
 def get_all_episodes_for_anime(db: Session, anime_id: int):
     return db.query(Episode).join(Season).filter(Season.anime_id == anime_id).all()
 
+
 # ---------------- Anime ----------------
 def get_or_create_anime(
     db: Session,
     name: str,
     path: str,
+    status_on_disk: str = "has_media", 
     force_update: bool = False,
     type: str = ""
 ) -> Anime:
     anime = db.query(Anime).filter_by(name=name).first()
-
-    if not anime:
+    # if anime.path != path:
+    #     # On combine les deux en deplacant l'anime vers le nouveau path
+    #     #combine_anime(db, anime.id, anime.id, move=True)            
+    #     pass
+    if not anime :
         try:
             anime_info = get_anime_info(name) or {}
         except Exception:
@@ -270,6 +321,8 @@ def get_or_create_anime(
             rank=anime_info.get("rank"),
             created_at=anime_info.get("created_at"),
             studio=anime_info.get("studio", ""),
+            status_on_disk=status_on_disk
+
         )
 
         db.add(anime)
@@ -282,7 +335,9 @@ def get_or_create_anime(
         if anime.path != path:
             anime.path = path
             updated = True
-
+        if anime.type != type:
+            anime.type = type
+            updated = True
         if updated:
             db.commit()
 
@@ -298,7 +353,6 @@ def get_or_create_season(db: Session, anime: Anime, season_name: str, force_upda
         db.commit()
         db.refresh(season)
     return season
-
 
 # ---------------- Episode ----------------
 def get_or_create_episode(
@@ -573,3 +627,33 @@ def create_episode(
     db.refresh(episode)
 
     return episode
+
+def get_seasons_by_anime(db: Session, anime_id):
+    """
+    Retourne tout les saisons d'un anime
+    """
+    seasons = db.query(Season).filter_by(anime_id=anime_id).all()
+    return seasons
+
+def combine_anime(db : Session, dest_id, anime_id, move=False):
+    anime_d = db.query(Anime).filter_by(id=dest_id).first()
+    if not anime_d:
+        raise
+    
+    anime = db.query(Anime).filter_by(id=anime_id).first()
+    if not anime:
+        return
+    if move:
+        for season in anime.seasons:
+            season.anime_id = anime_d.id
+            db.commit()
+            for episode in season.episodes:
+                episode.season_id = season.id
+                db.commit()
+                
+        anime.path = anime_d.path
+        db.commit()
+        
+    seasons = get_seasons_by_anime(anime_id)    
+    
+         

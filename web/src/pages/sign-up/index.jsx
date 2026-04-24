@@ -1,48 +1,58 @@
 import React, { useCallback, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { User, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, UserPlus, ArrowLeft } from 'lucide-react';
 import clsx from 'clsx';
 import { useSelector } from 'react-redux';
 import { signup } from '../../controllers/auth';
 import toast from 'react-hot-toast';
 
+// Import de ton image de fond (utilise la même ou une autre dans assets)
+import backgroundImage from '../../assets/background-signup.jpg'; 
+
 const TextInput = React.forwardRef(
-  ({ label, icon: Icon, type, id, error, themeColors, ...rest }, ref) => (
-    <div>
-      <label htmlFor={id} className="block font-medium mb-1" style={{ color: themeColors.main }}>
+  ({ label, icon: Icon, type, id, error, darkMode, rightElement, ...rest }, ref) => (
+    <div className="w-full space-y-1.5">
+      <label htmlFor={id} className={clsx(
+        "block text-sm font-semibold transition-colors",
+        darkMode ? "text-gray-300" : "text-gray-700"
+      )}>
         {label}
       </label>
-      <div
-        className={clsx(
-          'flex items-center border rounded-lg px-3 focus-within:ring-2 transition-colors',
-          error
-            ? 'border-red-500 focus-within:ring-red-400'
-            : 'border-gray-300 focus-within:ring-opacity-50'
+      <div className="relative group">
+        <div className={clsx(
+          'flex items-center border rounded-xl px-3 transition-all duration-200 ring-offset-2',
+          error 
+            ? 'border-red-500 bg-red-50/10' 
+            : 'border-gray-300 dark:border-gray-700 focus-within:ring-2 focus-within:border-transparent',
+          darkMode ? 'bg-gray-800/50 focus-within:ring-blue-500' : 'bg-white focus-within:ring-blue-600'
+        )}>
+          <Icon className={clsx('w-5 h-5 mr-2 shrink-0', error ? 'text-red-500' : 'text-gray-400 group-focus-within:text-blue-500')} />
+          <input
+            id={id}
+            type={type}
+            ref={ref}
+            className={clsx(
+              'flex-1 py-2.5 outline-none bg-transparent text-sm placeholder-gray-500 w-full',
+              darkMode ? 'text-gray-100' : 'text-gray-900'
+            )}
+            {...rest}
+          />
+          {rightElement}
+        </div>
+        {error && (
+          <p role="alert" className="text-red-500 text-xs mt-1 animate-in fade-in slide-in-from-top-1">
+            {error.message}
+          </p>
         )}
-        style={{ borderColor: error ? '#f87171' : themeColors.main }}
-      >
-        <Icon className={clsx('w-5 h-5 mr-2', error ? 'text-red-500' : themeColors.main)} />
-        <input
-          id={id}
-          type={type}
-          ref={ref}
-          aria-invalid={error ? 'true' : 'false'}
-          className="flex-1 py-2 outline-none"
-          {...rest}
-        />
       </div>
-      {error && (
-        <p role="alert" className="text-red-500 text-sm mt-1">
-          {error.message}
-        </p>
-      )}
     </div>
   )
 );
 
 export default function SignUp() {
   const theme = useSelector((state) => state.theme);
-  const { primaryColors, secondaryColors } = theme;
+  const { primaryColors, mode } = theme;
+  const darkMode = mode === 'dark';
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -55,8 +65,6 @@ export default function SignUp() {
 
   const onSubmit = useCallback(async (data) => {
     setSubmitting(true);
-    console.log("sb");
-    
     try {
       await signup(data);
       toast.success('Compte créé avec succès !');
@@ -70,16 +78,31 @@ export default function SignUp() {
   }, [setError]);
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center px-4"
+    <div 
+      className="min-h-screen flex items-center justify-center px-4 transition-colors duration-500 bg-cover bg-center bg-no-repeat relative"
+      style={{ backgroundImage: `url(${backgroundImage})` }}
     >
-      <div className="p-8 rounded-2xl shadow-2xl w-full max-w-sm"
-          style={{ backgroundColor: secondaryColors.accent + '33' }}  
-        >
-        <h2 className="text-2xl font-bold mb-2 text-center" style={{ color: primaryColors.main }}>
-          Créer un compte
-        </h2>
-        <p className="text-center text-gray-600 mb-6">Aniwatch</p>
+      {/* Overlay de contraste */}
+      <div className={clsx(
+        "absolute inset-0 transition-opacity duration-500",
+        darkMode ? "bg-black/70" : "bg-white/40 backdrop-blur-[5px]"
+      )} />
+
+          <div className={clsx(
+            'relative p-8 rounded-3xl shadow-2xl w-full max-w-md border transition-all duration-500 z-10',
+            // Effet Glassmorphism ici
+            darkMode 
+              ? 'bg-gray-900/40 border-white/10 backdrop-blur-md shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]' 
+              : 'bg-white/30 border-white/40 backdrop-blur-md shadow-[0_8px_32px_0_rgba(31,38,135,0.15)]'
+          )}>
+          <div className="mb-8">
+          <h2 className="text-3xl font-black tracking-tight mb-1" style={{ color: primaryColors.main }}>
+            Rejoindre l'aventure
+          </h2>
+          <p className={clsx('text-sm', darkMode ? 'text-gray-400' : 'text-gray-500')}>
+            Créez votre compte <span className="font-bold text-blue-500">Aniwatch</span>.
+          </p>
+        </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
           <TextInput
@@ -87,10 +110,10 @@ export default function SignUp() {
             label="Nom d’utilisateur"
             icon={User}
             type="text"
-            placeholder="Votre nom d'utilisateur"
-            {...register('username', { required: 'Nom d’utilisateur requis' })}
+            placeholder="Ex: MonkeyDLuffy"
+            {...register('username', { required: 'Le nom d’utilisateur est requis' })}
             error={errors.username}
-            themeColors={primaryColors}
+            darkMode={darkMode}
           />
 
           <TextInput
@@ -98,107 +121,85 @@ export default function SignUp() {
             label="E-mail"
             icon={Mail}
             type="email"
-            placeholder="Votre e-mail"
-            {...register('email', { required: 'E-mail requis' })}
+            placeholder="nom@exemple.com"
+            {...register('email', { 
+              required: 'L’e-mail est requis',
+              pattern: { value: /^\S+@\S+$/i, message: 'Email invalide' }
+            })}
             error={errors.email}
-            themeColors={primaryColors}
+            darkMode={darkMode}
           />
 
-          <div>
-            <label htmlFor="password" className="block font-medium mb-1" style={{ color: primaryColors.main }}>
-              Mot de passe
-            </label>
-            <div
-              className={clsx(
-                'flex items-center border rounded-lg px-3 focus-within:ring-2 transition-colors',
-                errors.password ? 'border-red-500 focus-within:ring-red-400' : 'border-gray-300 focus-within:ring-opacity-50'
-              )}
-              style={{ borderColor: errors.password ? '#f87171' : primaryColors.main }}
-            >
-              <Lock className={clsx('w-5 h-5 mr-2', errors.password ? 'text-red-500' : primaryColors.main)} />
-              <input
-                id="password"
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Entrez votre mot de passe"
-                aria-invalid={errors.password ? 'true' : 'false'}
-                {...register('password', {
-                  required: 'Mot de passe requis',
-                  minLength: { value: 6, message: 'Au moins 6 caractères' },
-                })}
-                className={`flex-1 py-2 outline-none ${errors.password ? 'text-red-500' : ''}`}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-                className="ml-2 text-gray-500 hover:text-gray-700 focus:outline-none"
-              >
-                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+          <TextInput
+            id="password"
+            label="Mot de passe"
+            icon={Lock}
+            type={showPassword ? 'text' : 'password'}
+            placeholder="••••••••"
+            {...register('password', {
+              required: 'Mot de passe requis',
+              minLength: { value: 6, message: 'Au moins 6 caractères' },
+            })}
+            error={errors.password}
+            darkMode={darkMode}
+            rightElement={
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="text-gray-400 hover:text-gray-600 focus:outline-none">
+                {showPassword ? <EyeOff size={18}/> : <Eye size={18}/>}
               </button>
-            </div>
-            {errors.password && (
-              <p role="alert" className="text-red-500 text-sm mt-1">
-                {errors.password.message}
-              </p>
-            )}
-          </div>
+            }
+          />
 
-          <div>
-            <label htmlFor="confirmPassword" className="block font-medium mb-1" style={{ color: primaryColors.main }}>
-              Confirmer le mot de passe
-            </label>
-            <div className="flex items-center border rounded-lg px-3 focus-within:ring-2 transition-colors" style={{ borderColor: primaryColors.main }}>
-              <Lock className="w-5 h-5 mr-2" style={{ color: primaryColors.main }} />
-              <input
-                id="confirmPassword"
-                type={showConfirm ? 'text' : 'password'}
-                placeholder="Confirmez le mot de passe"
-                aria-invalid={errors.confirmPassword ? 'true' : 'false'}
-                {...register('confirmPassword', {
-                  required: 'Confirmation requise',
-                  validate: value => value === watch('password') || 'Les mots de passe ne correspondent pas',
-                })}
-                className="flex-1 py-2 outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirm((v) => !v)}
-                aria-label={showConfirm ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
-                className="ml-2 text-gray-500 hover:text-gray-700 focus:outline-none"
-              >
-                {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+          <TextInput
+            id="confirmPassword"
+            label="Confirmer le mot de passe"
+            icon={Lock}
+            type={showConfirm ? 'text' : 'password'}
+            placeholder="••••••••"
+            {...register('confirmPassword', {
+              required: 'Confirmation requise',
+              validate: value => value === watch('password') || 'Les mots de passe ne correspondent pas',
+            })}
+            error={errors.confirmPassword}
+            darkMode={darkMode}
+            rightElement={
+              <button type="button" onClick={() => setShowConfirm(!showConfirm)} className="text-gray-400 hover:text-gray-600 focus:outline-none">
+                {showConfirm ? <EyeOff size={18}/> : <Eye size={18}/>}
               </button>
-            </div>
-            {errors.confirmPassword && (
-              <p role="alert" className="text-red-500 text-sm mt-1">
-                {errors.confirmPassword.message}
-              </p>
-            )}
-          </div>
+            }
+          />
 
           <button
             type="submit"
             disabled={submitting}
-            aria-busy={submitting}
-            className="w-full py-2 rounded-lg text-white font-medium transition-colors duration-300"
+            className={clsx(
+              "w-full py-3 rounded-xl font-bold text-white transition-all transform active:scale-[0.98] flex items-center justify-center space-x-2 mt-4",
+              submitting ? "opacity-70 cursor-not-allowed" : "hover:shadow-lg hover:brightness-110"
+            )}
             style={{ backgroundColor: primaryColors.main }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = primaryColors.accent}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = primaryColors.main}
           >
-            {submitting ? 'Création…' : 'Créer un compte'}
+            {submitting ? (
+              <span>Création en cours...</span>
+            ) : (
+              <>
+                <span>Créer mon compte</span>
+                <UserPlus size={18} />
+              </>
+            )}
           </button>
 
-          <p className="text-center mt-2 text-gray-600">
-            Déjà un compte ?{' '}
+          <div className="pt-4 border-t dark:border-gray-800 border-gray-100">
             <button
               type="button"
               onClick={() => (window.location.href = '/login')}
-              className="font-medium"
-              style={{ color: primaryColors.main }}
+              className={clsx(
+                "w-full flex items-center justify-center space-x-2 text-sm font-medium transition-colors p-2 rounded-lg hover:bg-gray-500/10",
+                darkMode ? "text-gray-400 hover:text-white" : "text-gray-600 hover:text-gray-900"
+              )}
             >
-              Se connecter
+              <ArrowLeft size={16} />
+              <span>Déjà un compte ? Se connecter</span>
             </button>
-          </p>
+          </div>
         </form>
       </div>
     </div>

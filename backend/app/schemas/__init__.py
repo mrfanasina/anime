@@ -5,3 +5,4 @@ from .watch import (
     WatchEpisodeBase, WatchEpisodeCreate, WatchEpisodeOut, WatchEpisodeUpdate
 )
 from .downloader import DownloadRequest
+from .anime import Copy, Selection

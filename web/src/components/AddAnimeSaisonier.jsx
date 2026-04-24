@@ -10,7 +10,7 @@ import { showToast } from "../utils/alerts";
 ================================ */
 const TRENDING_QUERY = `
 query TrendingNow($season: MediaSeason, $year: Int) {
-  Page(perPage: 12) {
+  Page(perPage: 48) {
     media(type: ANIME, season: $season, seasonYear: $year, sort: TRENDING_DESC) {
       id
       title { romaji }

@@ -31,3 +31,5 @@ def get_back_url():
     local_ip = get_local_ip()
     back_url = f"http://{local_ip}:8000"
     return {"backUrl": back_url}
+
+# Recuperer le hierarhie des tout les dosssier 

@@ -12,12 +12,13 @@ from app.db.models.watch import Watch
 from app.utils.get_anime_info import get_anime_info, update_anime_info_in_db
 from app.utils.folder import find_media_folders
 from app.utils.get_anime_info import add_new_info, update_anime_info
-from app.crud.anime import get_all_animes, get_anime_details, get_anime_and_season_by_episode, get_all_movies, update_anime_path
+from app.crud.anime import get_all_animes, get_all_tv,  get_anime_details, get_anime_and_season_by_episode, get_all_movies, update_anime_path
 from app.crud.seasonal import get_all_seasonal
 from app.db.models.seasonal_period import SeasonalPeriod
 from app.db.models.calendar_seasons import CalendarSeason
 import logging
 import os
+from .. import schemas
 
 router = APIRouter()
 db = SessionLocal()    
@@ -43,6 +44,14 @@ def get_animes():
     finally:
         db.close()
         
+@router.get("/TV")
+def get_animes():
+    db = SessionLocal()
+    try:
+        animes = get_all_tv(db)
+        return animes
+    finally:
+        db.close()
 @router.get("/movies")
 def get_animes():
     db = SessionLocal()
@@ -275,6 +284,7 @@ def get_anime_by_episode(episode_id: int):
         "anime": anime,
         "season": season
     }
+
 @router.post("/move/{anime_id}", status_code=status.HTTP_200_OK)
 def move_anime(anime_id: int, path: str = Body(..., embed=True)):
     """
@@ -343,3 +353,99 @@ def move_anime(anime_id: int, path: str = Body(..., embed=True)):
             "path": anime.path
         }
     }
+
+@router.get("/manager/disk")
+def get_all_hierarchy_folder_disk():
+    """
+    Récupère la hiérarchie des disques et partitions du système.
+    """
+    from app.utils.manager import get_active_disks
+    try:
+        data = get_active_disks()
+        return data
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erreur lors de la récupération des disques : {str(e)}"
+        )
+
+# -------------------------
+# Récuperer le dossier a afficher, pour l'interface
+@router.post("/next-folder/")
+def get_next_folder(path: str = Body(..., embed=True)):
+    """
+    Retourne le prochain dossier à afficher dans l'interface.
+    """
+    if not path or not path.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Le chemin fourni est invalide."
+        )
+
+    #  Vérification si le dossier existe
+    if not os.path.exists(path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Le dossier spécifié n'existe pas."
+        )
+
+    #  Récupération du prochain dossier
+    next_folder = [item for item in os.listdir(path) if os.path.isdir(os.path.join(path, item))]
+    if not next_folder:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Aucun dossier trouvé dans le chemin spécifié."
+        )
+
+    return {"next_folder": next_folder}
+
+#Copier les animes 
+@router.post("/copy")
+def copyAnime(animeId: int = Body(..., embed=True) ,
+              selection: schemas.Selection = Body(..., embed=True), 
+              targetPath: str = Body(..., embed=True)):
+    #  Récupération anime
+    anime = db.query(Anime).filter(Anime.id == animeId).first()
+    if not anime:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Anime introuvable."
+        )
+
+    if not targetPath or not targetPath.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Le chemin fourni est invalide."
+        )
+    new_path = os.path.join(targetPath, anime.name)
+    #  Création du nouveau dossier (toujours)
+    try:
+        os.makedirs(new_path, exist_ok=True)
+    except OSError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Impossible de créer le dossier cible : {str(e)}"
+        )
+
+    # Fichier a copier 
+    if selection.type == "all": 
+        files = os.listdir(anime.path)
+    elif selection.episodeIds:
+        files = []
+        for i in selection.episodeIds:
+            ep = db.query(Episode).filter_by(id=i).first()
+            files.append(ep.path)
+            
+    # Déplacement du contenu si l'ancien dossier existe
+    if anime.path and os.path.exists(anime.path) and anime.path != new_path:
+        try:
+            for item in files:
+                src = os.path.join(anime.path, item)
+                dst = os.path.join(new_path)
+                shutil.copy(src, dst)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Erreur lors du copie du contenu : {str(e)}"
+            )
+    

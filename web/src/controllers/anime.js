@@ -118,3 +118,22 @@ export const updateAllAnimeInfo = async () => {
   const response = await api.get(`/anime/update-info/all`);
   return response.data;
 }
+
+
+export const fetchDisks = async () => {
+  
+  const res = await api.get("/anime/manager/disk");
+
+  return res.data;
+};
+
+export const getNextFolder = async (path) => {
+  const res = await api.post("/anime/next-folder/", { path });
+  console.log("fetching disk", res.data.next_folder);
+  return res.data.next_folder;
+}
+
+export const copyFile = async (payload) => {
+  const res = await api.post("/anime/copy", payload)
+  return res
+}  

@@ -81,7 +81,7 @@ const App = () => {
           </Suspense>
         } />
         <Route
-          path="/anime/:type?"
+          path="/animes/:type?"
           element={
             <Suspense fallback={<Loader />}>
               <AnimePage />

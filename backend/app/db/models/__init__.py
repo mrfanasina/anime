@@ -10,3 +10,5 @@ from .episode import Episode
 from .calendar_seasons import CalendarSeason
 from .seasonal_period import SeasonalPeriod
 from .seasonal_animes import SeasonalAnime
+from .anime_locations import AnimeLocation
+from .anime_links import anime_links

@@ -23,8 +23,7 @@ import { getBackUrl } from '../controllers/anime';
 
 const navLinks = [
   { to: '/home', label: 'Home' },
-  { to: '/anime', label: 'Animes' },
-  { to: '/anime/movies', label: 'Movies' },
+  { to: '/animes', label: 'Animes' },
   { to: '/seasonal', label: 'Seasonal' },
   { to: '/watch-list', label: 'Watch-List' },
   { to: '/duel', label: 'Duel' },

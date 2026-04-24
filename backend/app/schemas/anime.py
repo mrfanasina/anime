@@ -30,3 +30,12 @@ class AnimeWithLastEpisodeViewed(AnimeBase):
     last_episode_viewed: Optional[int] = None
     next_episode_to_watch: Optional[int] = None
     
+class Selection(BaseModel):
+    episodeIds: Optional[list[int]] = None
+    type: Optional[str] = "all"
+    
+class Copy(BaseModel):
+    animeId: int
+    selection: Optional[str] = None
+    targetPath: str
+    
