@@ -1,6 +1,6 @@
 # Anime Manager
 
-Anime Manager est une application complète permettant de gérer, organiser et synchroniser vos animés entre plusieurs plateformes : **PC (FastAPI + MySQL)**, **Android (Kotlin/Java)** et **Web (React)**. Le projet est pensé pour fonctionner **en local** et **en ligne**, avec un système intelligent de détection des animés, de synchronisation, et même de gestion des titres alternatifs.
+Anime Manager est une application complète permettant de gérer, organiser et synchroniser vos animés entre plusieurs plateformes : **PC (FastAPI + MySQL)**, **Android (Kotlin/Java)** et **Web (React)**. Le projet est pensé pour fonctionner **en local** et **en ligne**, avec un système intelligent de détection des animés, de synchronisation, et de watchlist.
 
 ## 🚀 Fonctionnalités principales
 
@@ -74,7 +74,7 @@ npm run dev
 * Compression lors du transfert Android → PC
 * Historique des téléchargements
 * Interface plus avancée côté mobile
-
+* Watchlist sur Mobile
 ## 📄 Licence
 
 Projet personnel — usage libre.

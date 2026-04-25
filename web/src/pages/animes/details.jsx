@@ -4,6 +4,7 @@ import { useSelector } from "react-redux";
 import Loader from "../../utils/Loader.jsx";
 import TopBar from "../../components/TopBar.jsx";
 import {
+  deleteAnime,
   getAnimeById,
   getFolders,
   moveAnime,
@@ -605,12 +606,12 @@ const AnimeDetails = () => {
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   };
 
-  const deleteAnime = () => {
+  const onDeleteAnime = () => {
     showConfirm("Supprimer cet anime ?")
       .then(async (confirmed) => {
         if (confirmed) {
           try {
-            await moveAnime(anime.id, null);
+            await deleteAnime(anime.id);
             showToast("Anime supprimé", "success");
             navigate("/animes");
           } catch (err) {
@@ -874,7 +875,7 @@ const AnimeDetails = () => {
 
 
                 {/* Supprimer */}
-                <button onClick={() => { deleteAnime(anime.id) }}
+                <button onClick={() => { onDeleteAnime(anime.id) }}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all hover:scale-105 active:scale-95"
                   style={{ backgroundColor: "#ef4444" + "20", color: "#ef4444" }}>
                   <Trash2 size={15} />  

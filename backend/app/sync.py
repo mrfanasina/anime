@@ -86,7 +86,7 @@ def sync_all_disks():
                 if item_name.startswith('#'):
                     print(f"📂 Synchronisation saisonniers trouvée : {folder_path}")
                     sync_seasonal_animes(db, item_path)
-
+                    continue
                 if not os.path.isdir(item_path):
                     continue
 

@@ -12,7 +12,7 @@ from app.db.models.watch import Watch
 from app.utils.get_anime_info import get_anime_info, update_anime_info_in_db
 from app.utils.folder import find_media_folders
 from app.utils.get_anime_info import add_new_info, update_anime_info
-from app.crud.anime import get_all_animes, get_all_tv,  get_anime_details, get_anime_and_season_by_episode, get_all_movies, update_anime_path
+from app.crud.anime import get_all_animes, get_all_tv, remove_anime, get_anime_details, get_anime_and_season_by_episode, get_all_movies, update_anime_path
 from app.crud.seasonal import get_all_seasonal
 from app.db.models.seasonal_period import SeasonalPeriod
 from app.db.models.calendar_seasons import CalendarSeason
@@ -354,6 +354,23 @@ def move_anime(anime_id: int, path: str = Body(..., embed=True)):
         }
     }
 
+@router.delete("/delete-anime/{anime_id}")
+def delete_anime(anime_id: int):
+    # !!! delete anime in disk and in bd
+    pass
+
+@router.delete("/remove-anime/{anime_id}")
+def suppress_anime(anime_id: int):
+    
+    # delete only in db
+    try : 
+        remove_anime(anime_id=anime_id, db=db)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erreur lors de la suppression de l'anime : {anime_id}: {str(e)}"
+        )
+    
 @router.get("/manager/disk")
 def get_all_hierarchy_folder_disk():
     """

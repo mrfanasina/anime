@@ -137,3 +137,8 @@ export const copyFile = async (payload) => {
   const res = await api.post("/anime/copy", payload)
   return res
 }  
+
+export const deleteAnime = async (animeId) => {
+  const res = await api.delete(`/anime/remove-anime/${animeId}`)
+  return res
+}

@@ -66,7 +66,7 @@ def get_all_animes(db: Session):
  
 # mise à du path de l'anime
 def update_anime_path(db: Session, anime_id: int, new_path: str):
-    anime = db.query(Anime).filter_by(id=anime_id).first()
+    anime = get_anime(db, anime_id)
     if anime:
         anime.path = new_path
         db.commit()
@@ -100,7 +100,7 @@ def get_anime_details(db: Session, anime_id: int, user_id: int | None = None):
     """
     print(f"id = {user_id}")
     try:
-        anime = db.query(Anime).filter_by(id=anime_id).first()
+        anime = get_anime(db, anime_id)
         if not anime:
             return {"error": "Anime introuvable"}
 
@@ -640,7 +640,7 @@ def combine_anime(db : Session, dest_id, anime_id, move=False):
     if not anime_d:
         raise
     
-    anime = db.query(Anime).filter_by(id=anime_id).first()
+    anime = get_anime(db, anime_id)
     if not anime:
         return
     if move:
@@ -655,5 +655,25 @@ def combine_anime(db : Session, dest_id, anime_id, move=False):
         db.commit()
         
     seasons = get_seasons_by_anime(anime_id)    
+
+def get_anime(db: Session, anime_id: int):
+    return db.query(Anime).filter_by(id=anime_id).first()
+
     
-         
+def remove_anime(db: Session, anime_id, delete=False):
+    if delete:
+        #delete from file
+        pass
+    anime = get_anime(db, anime_id)
+    print(anime.name)
+    if not anime:
+        raise 
+    seasons = get_seasons_by_anime(db, anime_id)
+    
+    episodes = get_all_episodes_for_anime(db, anime_id)
+    try:
+        db.delete(anime)
+        db.commit()
+        print("removed ")
+    except Exception as e: 
+        print(e)
