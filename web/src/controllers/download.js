@@ -1,7 +1,16 @@
+/**
+ * Contrôleur Download — Fonctions de recherche et téléchargement d'animes via Nyaa.
+ */
 import Swal from "sweetalert2";
 import api from "../services/api";
 
-// Recherche simple sur Nyaa
+const API_URL = import.meta.env.VITE_API_URL;
+
+/**
+ * Recherche simple sur Nyaa pour un terme donné.
+ * @param {string} query - Terme de recherche.
+ * @returns {Promise<Object>} Résultats de la recherche.
+ */
 export const searchNyaa = async (query) => {
   try {
     const response = await api.get("/download/nyaa-search", {
@@ -14,7 +23,12 @@ export const searchNyaa = async (query) => {
   }
 };
 
-// Recherche d'anime téléchargeable avec mode
+/**
+ * Recherche les torrents disponibles pour un anime sur Nyaa.
+ * @param {number} animeId - ID de l'anime.
+ * @param {string} mode - Mode de recherche ("next" ou "all").
+ * @returns {Promise<Object>} Résultats avec les torrents correspondants.
+ */
 export const searchDownloadableAnime = async (animeId, mode = "next") => {
   try {
     const response = await api.get(`/download/search-downloadable-anime/${animeId}`, {
@@ -27,7 +41,11 @@ export const searchDownloadableAnime = async (animeId, mode = "next") => {
   }
 };
 
-//Recuperation des episodes manquants
+/**
+ * Récupère les numéros d'épisodes manquants pour une saison.
+ * @param {number} seasonId - ID de la saison.
+ * @returns {Promise<number[]>} Liste des numéros d'épisodes manquants.
+ */
 export const getMissingEpisodes = async (seasonId) => {
   try {
     const response = await api.get(`/episode/miss/${seasonId}`);
@@ -38,10 +56,16 @@ export const getMissingEpisodes = async (seasonId) => {
   }
 };
 
-// Téléchargement d’un épisode avec suivi en temps réel
+/**
+ * Télécharge un épisode via lien magnet avec suivi de progression en temps réel.
+ * Affiche une SweetAlert2 avec barre de progression.
+ * 
+ * @param {string} magnetUrl - Lien magnet du torrent.
+ * @param {number} seasonId - ID de la saison cible.
+ */
 export const downloadEpisode = (magnetUrl, seasonId) => {
   const ws = new WebSocket(
-    `ws://localhost:8000/download/download-anime/${seasonId}?magnet=${encodeURIComponent(magnetUrl)}`
+    `${API_URL.replace('http', 'ws')}download/download-anime/${seasonId}?magnet=${encodeURIComponent(magnetUrl)}`
   );
 
   let progress = 0;
@@ -65,7 +89,6 @@ export const downloadEpisode = (magnetUrl, seasonId) => {
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        console.log("📡 WebSocket:", data);
 
         if (data.error || data.state === "error") {
           Swal.update({
@@ -84,7 +107,7 @@ export const downloadEpisode = (magnetUrl, seasonId) => {
           progressText.textContent = `${progress.toFixed(1)}% — ${data.state || ""}`;
         }
 
-        // Quand c’est fini
+        // Téléchargement terminé
         if (data.state === "seeding" || data.progress >= 100) {
           progressBar.style.width = "100%";
           progressText.textContent = "100% — Terminé !";
@@ -103,7 +126,7 @@ export const downloadEpisode = (magnetUrl, seasonId) => {
       };
 
       ws.onerror = (err) => {
-        console.error("❌ Erreur WebSocket:", err);
+        console.error("Erreur WebSocket:", err);
         Swal.fire({
           title: "Erreur de connexion",
           text: "Impossible de communiquer avec le serveur.",

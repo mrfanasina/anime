@@ -1,24 +1,30 @@
-# shemas/user.py
+"""
+Schémas Pydantic pour les utilisateurs.
+"""
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 
-# Schéma de base
+
 class UserBase(BaseModel):
+    """Schéma de base pour un utilisateur."""
     username: str = Field(..., min_length=3, max_length=100)
     email: EmailStr
 
-# Pour la création
+
 class UserCreate(UserBase):
+    """Schéma de création d'un utilisateur."""
     password: str = Field(..., min_length=6)
 
-# Pour le login (email OU username)
+
 class UserLogin(BaseModel):
-    login: str = Field(..., min_length=3)  # <- Peut être email OU username
+    """Schéma de connexion (email OU username)."""
+    login: str = Field(..., min_length=3)
     password: str = Field(..., min_length=6)
 
-# Pour la réponse (affichage user)
+
 class UserResponse(UserBase):
+    """Schéma de réponse pour les données utilisateur."""
     id: int
 
     class Config:
-        from_attributes = True  # équivalent à orm_mode
+        from_attributes = True

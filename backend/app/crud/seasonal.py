@@ -1,13 +1,14 @@
-from sqlalchemy.orm import Session
-from app.db.models.anime import Anime
-from app.db.models.seasonal_animes import SeasonalAnime
-from app.db.models.seasonal_period import SeasonalPeriod
-from app.db.models.calendar_seasons import CalendarSeason
+"""Opérations CRUD pour les animés saisonniers et les périodes saisonnières."""
 import re
 import time
 import unicodedata
 from datetime import datetime
 from sqlalchemy.orm import Session
+
+from app.db.models.anime import Anime
+from app.db.models.seasonal_animes import SeasonalAnime
+from app.db.models.seasonal_period import SeasonalPeriod
+from app.db.models.calendar_seasons import CalendarSeason
 
 SEASON_KEYWORDS = {
     "WINTER": ["winter", "hiver", "janvier", "january", "fevrier", "february", "decembre", "december"],
@@ -15,15 +16,18 @@ SEASON_KEYWORDS = {
     "SUMMER": ["summer", "ete", "été", "juin", "june", "juillet", "july", "aout", "août", "august"],
     "FALL":   ["fall", "autumn", "automne", "septembre", "september", "octobre", "october", "novembre", "november"],
 }
+"""Mots-clés de saison en français et anglais pour la détection automatique."""
 
 def normalize(text: str) -> str:
+    """Normalise un texte : minuscules, suppression des accents, nettoyage."""
     text = text.lower()
     text = unicodedata.normalize("NFD", text)
     text = "".join(c for c in text if unicodedata.category(c) != "Mn")
     text = re.sub(r"[^a-z0-9 ]", " ", text)
     return text
 
-def detect_season_and_year(raw: str | None):
+def detect_season_and_year(raw: str | None) -> tuple:
+    """Détecte le code de saison et l'année à partir d'un texte brut."""
     now = datetime.utcnow()
     year = None
     season_code = None
@@ -110,14 +114,13 @@ def get_or_create_seasonal_period(
     return period
 
 
-#Recuperer tous les saisonniers avec les noms de saison
-def get_all_seasonal(db: Session):
+
+def get_all_seasonal(db: Session) -> list[SeasonalAnime]:
+    """Récupère tous les animés saisonniers."""
     return db.query(SeasonalAnime).all()
 
-def create_seasonal_period(db: Session, calendar_season_id: int, year: int = time.localtime().tm_year, is_current: bool= False) -> SeasonalPeriod:
-    """
-    Create a new seasonal period.
-    """
+def create_seasonal_period(db: Session, calendar_season_id: int, year: int = time.localtime().tm_year, is_current: bool = False) -> SeasonalPeriod:
+    """Crée une nouvelle période saisonnière."""
     seasonal_period = SeasonalPeriod(
         calendar_season_id=calendar_season_id,
         year=year,
@@ -129,14 +132,11 @@ def create_seasonal_period(db: Session, calendar_season_id: int, year: int = tim
 
 def get_or_create_seasonal(
     db: Session,
-    anime,
-    seasonal_period,
+    anime: Anime,
+    seasonal_period: SeasonalPeriod,
     force_update: bool = False,
 ) -> SeasonalAnime:
-    """
-    Lie un Anime à un SeasonalPeriod via SeasonalAnime.
-    Crée l'entrée si absente.
-    """
+    """Lie un Anime à un SeasonalPeriod via SeasonalAnime. Crée l'entrée si absente."""
 
     seasonal = (
         db.query(SeasonalAnime)

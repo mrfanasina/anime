@@ -1,5 +1,2 @@
-from os import system
-
-def getFolder():
-    system("ls")    
-getFolder()
+# utils.py — Fichier résiduel (nettoyé)
+# Les utilitaires ont été déplacés dans app/utils/

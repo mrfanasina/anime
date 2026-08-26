@@ -1,3 +1,4 @@
+"""Opérations CRUD pour la gestion de la watchlist (entrées principales)."""
 from typing import List, Optional
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException, status
@@ -7,9 +8,10 @@ from app.db.models.watch_season import WatchSeason
 from app.db.models.anime import Anime
 from app.schemas.watch import WatchCreate, WatchUpdate
 
-# CREATE
+
 def create_watch(db: Session, user_id: int, payload: WatchCreate) -> Watch:
-    # éviter doublons
+    """Crée une nouvelle watch en évitant les doublons par (user_id, anime_id)."""
+    # Éviter les doublons
     existing = db.query(Watch).filter_by(user_id=user_id, anime_id=payload.anime_id).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Anime déjà dans la watchlist")
@@ -19,7 +21,7 @@ def create_watch(db: Session, user_id: int, payload: WatchCreate) -> Watch:
     db.flush()  # pour avoir watch.id
 
         
-    # saisons + épisodes si fournis
+    # Saisons + épisodes si fournis
     if payload.seasons:
         for s in payload.seasons:
             ws = WatchSeason(watch_id=watch.id, season_id=s.season_id, completed=s.completed)
@@ -34,15 +36,17 @@ def create_watch(db: Session, user_id: int, payload: WatchCreate) -> Watch:
     db.refresh(watch)
     return watch
 
-# READ - liste complète de l'utilisateur (avec saison/episodes)
+
 def get_watch_list(db: Session, user_id: int) -> List[Watch]:
+    """Retourne la liste complète des watches d'un utilisateur (avec saisons et épisodes)."""
     watches = db.query(Watch).options(
         joinedload(Watch.seasons).joinedload(WatchSeason.episodes)
     ).filter(Watch.user_id == user_id).all()
     return watches
 
-# READ - un élément watch par id (avec relations)
+
 def get_watch(db: Session, watch_id: int) -> Watch:
+    """Récupère une watch par son ID avec ses relations chargées."""
     watch = db.query(Watch).options(
         joinedload(Watch.seasons).joinedload(WatchSeason.episodes)
     ).filter(Watch.id == watch_id).first()
@@ -50,8 +54,9 @@ def get_watch(db: Session, watch_id: int) -> Watch:
         raise HTTPException(status_code=404, detail="Watch entry not found")
     return watch
 
-# UPDATE - champs basiques (completed)
+
 def update_watch(db: Session, watch_id: int, data: WatchUpdate) -> Watch:
+    """Met à jour le champ 'completed' d'une watch."""
     watch = db.query(Watch).filter_by(id=watch_id).first()
     if not watch:
         raise HTTPException(status_code=404, detail="Watch entry not found")
@@ -61,7 +66,7 @@ def update_watch(db: Session, watch_id: int, data: WatchUpdate) -> Watch:
     db.refresh(watch)
     return watch
 
-# DELETE
+
 def delete_watch(db: Session, watch_id: int):
     watch = db.query(Watch).filter_by(id=watch_id).first()
     if not watch:
@@ -71,25 +76,28 @@ def delete_watch(db: Session, watch_id: int):
     return {"detail": "Supprimé avec succès"}
 
 
-# Helper: recalculer l'état "completed" du Watch principal en fonction des saisons
-def refresh_watch_completed(db: Session, watch: Watch):
+def refresh_watch_completed(db: Session, watch: Watch) -> Watch:
+    """Recalcule le statut 'completed' du Watch principal en fonction de ses saisons."""
+
     all_seasons = db.query(WatchSeason).filter_by(watch_id=watch.id).all()
     if not all_seasons:
         watch.completed = False
     else:
-        watch.completed = all(s.completed for s in all_seasons)
+        watch.completed = all(s.completed for s in all_seasons)  # noqa: all est OK ici
     db.commit()
     db.refresh(watch)
     return watch
 
-# Vérifie si l'utilisateur a déjà une watch pour cet anime
+
 def get_watch_by_user_anime(db: Session, user_id: int, anime_id: int) -> Watch | None:
+    """Vérifie si l'utilisateur a déjà une watch pour cet anime."""
     return db.query(Watch).filter_by(user_id=user_id, anime_id=anime_id).first()
 
 def get_watch_seasons_by_watch(db: Session, watch_id: int):
     return db.query(WatchSeason).filter(WatchSeason.watch_id == watch_id).all()
 
 def complete_watch_anime(db: Session, user_id: int, anime_id: int) -> Watch:
+    """Marque un anime entier comme terminé (toutes saisons et épisodes cochés)."""
     watch = get_watch_by_user_anime(db, user_id, anime_id)
     if not watch:
         raise HTTPException(status_code=404, detail="Aucune watch trouvée pour cet anime et utilisateur")

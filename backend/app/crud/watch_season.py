@@ -1,3 +1,4 @@
+"""Opérations CRUD pour les saisons de watch (WatchSeason)."""
 from datetime import datetime
 from sqlalchemy.orm import Session, joinedload
 from fastapi import HTTPException, status
@@ -9,8 +10,9 @@ from app.db.models.episode import Episode
 from app.crud.watch_episode import create_watch_episode
 from app.db.models.season import Season
 
-# CREATE
+
 def create_watch_season(db: Session, watch_id: int, season_id: int, completed: bool = False) -> WatchSeason:
+    """Crée une WatchSeason en évitant les doublons pour la même watch."""
     # éviter doublons de saison pour la même watch
     existing = db.query(WatchSeason).filter_by(watch_id=watch_id, season_id=season_id).first()
     if existing:
@@ -21,15 +23,17 @@ def create_watch_season(db: Session, watch_id: int, season_id: int, completed: b
     db.refresh(ws)
     return ws
 
-# READ
+
 def get_watch_season(db: Session, watch_season_id: int) -> WatchSeason:
+    """Récupère une WatchSeason par son ID avec ses épisodes chargés."""
     ws = db.query(WatchSeason).options(joinedload(WatchSeason.episodes)).filter_by(id=watch_season_id).first()
     if not ws:
         raise HTTPException(status_code=404, detail="WatchSeason introuvable")
     return ws
 
-# UPDATE
+
 def update_watch_season(db: Session, watch_season_id: int, completed: bool = None) -> WatchSeason:
+    """Met à jour le statut 'completed' d'une WatchSeason et recalcule le watch parent."""
     ws = db.query(WatchSeason).filter_by(id=watch_season_id).first()
     if not ws:
         raise HTTPException(status_code=404, detail="WatchSeason introuvable")
@@ -46,7 +50,7 @@ def update_watch_season(db: Session, watch_season_id: int, completed: bool = Non
 
     return ws
 
-# DELETE
+
 def delete_watch_season(db: Session, watch_season_id: int):
     ws = db.query(WatchSeason).filter_by(id=watch_season_id).first()
     if not ws:

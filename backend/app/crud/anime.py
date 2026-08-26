@@ -1,38 +1,36 @@
-from sqlalchemy.orm import Session
+"""Opérations CRUD pour les animés, saisons et épisodes."""
+import os
+import datetime as dt
+from sqlalchemy.orm import Session, aliased
+from sqlalchemy import func, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.db.models.anime import Anime
 from app.db.models.season import Season
 from app.db.models.episode import Episode
 from app.db.models.watch import Watch
 from app.db.models.watch_season import WatchSeason
 from app.db.models.watch_episode import WatchEpisode
-from sqlalchemy import func, desc
-from sqlalchemy.orm import aliased
+from app.db.models.seasonal_animes import SeasonalAnime
 from app.utils.media_info import extract_languages_and_subtitles
-from datetime import datetime
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.get_anime_info import get_anime_info
 from app.crud.seasonal import get_calendar_season, get_season_period, get_seasonal
-import datetime
-import os
 from app.utils.extract import extract_episode_number, extract_season_number
 from app.utils.folder import find_media_folders
-from app.db.models.seasonal_animes import SeasonalAnime
 
-def getSeasons(db :Session, anime_id):
+def get_seasons(db: Session, anime_id: int) -> list[Season]:
+    """Récupère toutes les saisons d'un anime donné."""
     return db.query(Season).filter_by(anime_id=anime_id).all()
 
-def get_all_animes(db: Session):
+def get_all_animes(db: Session) -> list[dict]:
+    """Récupère tous les animés avec leurs métadonnées formatées pour l'API."""
     animes = db.query(Anime).all()
-
     result = []
 
     for anime in animes:
-        has_episodes = any(
-            season.episodes for season in anime.seasons
-        )
+        has_episodes = any(season.episodes for season in anime.seasons)
 
         result.append({
-            # ─── champs principaux ───
             "id": anime.id,
             "name": anime.name,
             "title_nihon": anime.title_nihon,
@@ -52,20 +50,16 @@ def get_all_animes(db: Session):
             "seasons_count": anime.seasons_count,
             "seasons_diff": anime.seasons_diff,
             "fromPc": anime.fromPc,
-        
-
-            # ─── relations utiles ───
             "watchers_count": len(anime.watchers) if anime.watchers else 0,
             "genres": [g.name for g in anime.genres] if anime.genres else [],
             "status_on_disk": anime.status_on_disk,
-            # ─── logique custom ───
             "is_empty": not has_episodes,
         })
 
     return result
  
-# mise à du path de l'anime
-def update_anime_path(db: Session, anime_id: int, new_path: str):
+def update_anime_path(db: Session, anime_id: int, new_path: str) -> Anime | None:
+    """Met à jour le chemin du dossier d'un anime."""
     anime = get_anime(db, anime_id)
     if anime:
         anime.path = new_path
@@ -73,8 +67,8 @@ def update_anime_path(db: Session, anime_id: int, new_path: str):
         db.refresh(anime)
     return anime
 
-# All movies 
-def get_all_movies(db: Session):
+def get_all_movies(db: Session) -> list[Anime]:
+    """Récupère tous les animés de type MOVIE."""
     movies = db.query(Anime).filter_by(type="MOVIE").all()
     for movie in movies:
         if is_movie_on_disk(movie.path):
@@ -83,7 +77,8 @@ def get_all_movies(db: Session):
             movie.is_on_disk = False
     return movies
 
-def get_all_tv(db: Session):
+def get_all_tv(db: Session) -> list[Anime]:
+    """Récupère tous les animés de type TV."""
     tv_shows = db.query(Anime).filter_by(type="TV").all()
     return tv_shows
 
@@ -93,12 +88,8 @@ def is_movie_on_disk(path: str) -> bool:
     folders = path.lower().split(os.sep)
     return "movie" in folders or "movies" in folders
 
-def get_anime_details(db: Session, anime_id: int, user_id: int | None = None):
-    """
-    Récupère un anime avec ses saisons et épisodes.
-    Si user_id est fourni, inclut la progression par épisode et la progression globale.
-    """
-    print(f"id = {user_id}")
+def get_anime_details(db: Session, anime_id: int, user_id: int | None = None) -> dict:
+    """Récupère un anime avec ses saisons, épisodes et progression utilisateur."""
     try:
         anime = get_anime(db, anime_id)
         if not anime:
@@ -149,30 +140,6 @@ def get_anime_details(db: Session, anime_id: int, user_id: int | None = None):
             "progress": 0, # progress global initialisé à 0
             "fromPc": True 
         }
-        # -------------------------
-        # Ajouter les saisons saisonnières si l'anime est un saisonier
-        # -------------------------
-        # seasonal_entries = db.query(SeasonalAnime).filter_by(anime_id=anime.id).all()
-        
-        # if seasonal_entries:
-        #     result["seasonal_periods"] = []
-        #     for sa in seasonal_entries:
-        #         period = sa.seasonal_period
-        #         print(sa.diffuse_day)
-        #         result["seasonal_periods"].append({
-        #             "seasonal_anime_id": sa.id,
-        #             "season_name": period.calendar_season.name,
-        #             "season_code": period.calendar_season.code,
-        #             "year": period.year,
-        #             "episode_count": sa.episode_count,
-        #             "diffuse_day": sa.diffuse_day,
-        #             "diffuse_time": sa.diffuse_time,
-        #             "start_date": sa.start_date,
-        #             "end_date": sa.end_date,
-        #             "is_current": period.is_current,
-        #         })
-
-
         # -------------------------
         # Cas utilisateur non connecté
         # -------------------------
@@ -284,12 +251,13 @@ def get_anime_details(db: Session, anime_id: int, user_id: int | None = None):
     finally:
         db.close()
 
-# ---------------- All episodes for an anime ----------------
-def get_all_episodes_for_anime(db: Session, anime_id: int):
+
+def get_all_episodes_for_anime(db: Session, anime_id: int) -> list[Episode]:
+    """Récupère tous les épisodes d'un anime (via jointure Season)."""
     return db.query(Episode).join(Season).filter(Season.anime_id == anime_id).all()
 
 
-# ---------------- Anime ----------------
+
 def get_or_create_anime(
     db: Session,
     name: str,
@@ -299,11 +267,7 @@ def get_or_create_anime(
     type: str = ""
 ) -> Anime:
     anime = db.query(Anime).filter_by(name=name).first()
-    # if anime.path != path:
-    #     # On combine les deux en deplacant l'anime vers le nouveau path
-    #     #combine_anime(db, anime.id, anime.id, move=True)            
-    #     pass
-    if not anime :
+    if not anime:
         try:
             anime_info = get_anime_info(name) or {}
         except Exception:
@@ -343,8 +307,9 @@ def get_or_create_anime(
 
     return anime
 
-# ---------------- Season ----------------
+
 def get_or_create_season(db: Session, anime: Anime, season_name: str, force_update=False) -> Season:
+    """Récupère ou crée une saison pour un anime donné."""
     season = db.query(Season).filter_by(name=season_name, anime_id=anime.id).first()
     if not season:
         season_number = extract_season_number(season_name)
@@ -354,7 +319,7 @@ def get_or_create_season(db: Session, anime: Anime, season_name: str, force_upda
         db.refresh(season)
     return season
 
-# ---------------- Episode ----------------
+
 def get_or_create_episode(
     db: Session,
     season: Season,
@@ -371,7 +336,8 @@ def get_or_create_episode(
     )
 
     episode_number = extract_episode_number(episode_name)
-    # -------------------- CREATION --------------------
+
+    # --- Création ---
     if not episode:
         file_mtime = datetime.datetime.fromtimestamp(os.path.getmtime(path))
         print(episode_name, path)
@@ -392,7 +358,7 @@ def get_or_create_episode(
         db.add(episode)
         return episode
 
-    # -------------------- UPDATE --------------------
+    # --- Mise à jour ---
     if force_update:
         file_mtime = datetime.datetime.fromtimestamp(os.path.getmtime(path))
 
@@ -409,16 +375,16 @@ def get_or_create_episode(
         episode.episode_number = episode_number
         episode.path = path
 
-    # Dans tous les cas : s'il existe encore → pas disparu
     episode.not_found = False
-
     return episode
-# ----------------- Helpers -----------------
-def is_video_file(filename):
+
+
+# ==================== Helpers ====================
+def is_video_file(filename: str) -> bool:
     video_exts = ['.mp4', '.mkv', '.avi', '.mov', '.ts', '.flv']
     return any(filename.lower().endswith(ext) for ext in video_exts)
 
-def get_last_episode_number(db: Session, anime_id: int) -> int:
+def get_last_episode_number(db: Session, anime_id: int):
     last_episode = (
         db.query(Episode)
         .join(Season)
@@ -628,21 +594,19 @@ def create_episode(
 
     return episode
 
-def get_seasons_by_anime(db: Session, anime_id):
-    """
-    Retourne tout les saisons d'un anime
-    """
+def get_seasons_by_anime(db: Session, anime_id: int) -> list[Season]:
+    """Retourne toutes les saisons d'un anime."""
     seasons = db.query(Season).filter_by(anime_id=anime_id).all()
     return seasons
 
-def combine_anime(db : Session, dest_id, anime_id, move=False):
+def combine_anime(db: Session, dest_id: int, anime_id: int, move=False):
     anime_d = db.query(Anime).filter_by(id=dest_id).first()
     if not anime_d:
-        raise
+        raise ValueError(f"Anime de destination {dest_id} introuvable")
     
     anime = get_anime(db, anime_id)
     if not anime:
-        return
+        return None
     if move:
         for season in anime.seasons:
             season.anime_id = anime_d.id
@@ -653,27 +617,21 @@ def combine_anime(db : Session, dest_id, anime_id, move=False):
                 
         anime.path = anime_d.path
         db.commit()
-        
-    seasons = get_seasons_by_anime(anime_id)    
+    return get_seasons_by_anime(db, anime_id)
 
-def get_anime(db: Session, anime_id: int):
+
+def get_anime(db: Session, anime_id: int) -> Anime | None:
+    """Récupère un anime par son ID."""
     return db.query(Anime).filter_by(id=anime_id).first()
 
-    
-def remove_anime(db: Session, anime_id, delete=False):
+
+
+def remove_anime(db: Session, anime_id: int, delete=False):
     if delete:
-        #delete from file
+        # TODO: Implémenter la suppression des fichiers sur disque
         pass
     anime = get_anime(db, anime_id)
-    print(anime.name)
     if not anime:
-        raise 
-    seasons = get_seasons_by_anime(db, anime_id)
-    
-    episodes = get_all_episodes_for_anime(db, anime_id)
-    try:
-        db.delete(anime)
-        db.commit()
-        print("removed ")
-    except Exception as e: 
-        print(e)
+        raise ValueError(f"Anime {anime_id} introuvable")
+    db.delete(anime)
+    db.commit()

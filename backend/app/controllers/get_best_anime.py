@@ -45,7 +45,6 @@ def scan_animes(folder_path):
     return all_animes
 
 if __name__ == "__main__":
-    # Mets ici ton dossier d'animes
     folder = "/media/HDD/ANIME"
     animes = scan_animes(folder)
 
