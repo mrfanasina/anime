@@ -3,6 +3,8 @@ import logging
 from datetime import datetime, date, timezone
 import re
 
+from app.utils.http_client import request_with_retry
+
 ANILIST_GRAPHQL_URL = "https://graphql.anilist.co"
 
 def clean_title(title: str) -> str:
@@ -31,11 +33,11 @@ def get_anilist_seasonal_info(title: str) -> dict:
 
     try:
         headers = {"Content-Type": "application/json"}
-        r = requests.post(
+        r = request_with_retry(
+            "POST",
             ANILIST_GRAPHQL_URL,
             json={"query": query, "variables": {"search": clean}},
             headers=headers,
-            timeout=10
         )
         r.raise_for_status()
 

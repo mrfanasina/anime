@@ -3,6 +3,7 @@ import datetime
 import re
 from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
+from app.db.models.anime import Anime
 from app.crud import anime as anime_crud
 from app.crud import seasonal as seasonal_crud
 from app.utils.folder import find_media_folders
@@ -22,6 +23,10 @@ def compute_anime_disk_status(anime_path: str) -> str:
 
     if not os.path.exists(anime_path):
         return "empty"
+
+    # Cas film en fichier unique (pas un dossier)
+    if os.path.isfile(anime_path):
+        return "has_media" if anime_crud.is_video_file(anime_path) else "empty"
 
     has_video = False
     has_dirs = False
@@ -105,6 +110,13 @@ def sync_all_disks():
                 )
 
                 sync_anime_files(item_path, anime, db, force_update=True)
+
+    # ====================================================
+    # 🧠 Vérification sérieuse de l'existence sur disque :
+    #   marque "missing" les animés supprimés du disque
+    #   (ils restent en base) et rafraîchit le statut de tous.
+    # ====================================================
+    verify_animes_on_disk(db)
 
     db.commit()
     db.close()
@@ -268,6 +280,7 @@ def sync_seasonal_only():
                     from app.sync import sync_seasonal_animes
                     sync_seasonal_animes(db, saisonnier_path)
 
+        verify_animes_on_disk(db)
         db.commit()
         print("✅ Synchronisation saisonnière terminée")
 
@@ -321,6 +334,79 @@ def sync_seasonal_animes(db: Session, saisonnier_root: str):
                 seasonal_period=seasonal_period,
                 force_update=True
             )
+
+
+def is_mount_available(anime_path: str) -> bool:
+    """
+    Vérifie que le point de montage contenant le chemin est toujours monté.
+    Évite de marquer tous les animés comme "missing" lorsqu'un disque
+    est simplement débranché / démonté.
+    """
+    try:
+        with open("/proc/mounts", "r") as f:
+            current_mounts = [line.split()[1] for line in f]
+    except Exception:
+        return True
+
+    # Trouve le point de montage le plus précis englobant le chemin
+    best_mount = None
+    for mount in current_mounts:
+        if anime_path.startswith(mount) and (best_mount is None or len(mount) > len(best_mount)):
+            best_mount = mount
+
+    # Aucun point de montage connu → le chemin est sur le FS racine, toujours dispo
+    if best_mount is None:
+        return True
+
+    # Le point de montage doit exister ET être toujours monté
+    return os.path.exists(best_mount) and os.path.ismount(best_mount)
+
+
+def verify_animes_on_disk(db: Session):
+    """
+    Vérification sérieuse de l'existence des animés sur le disque.
+
+    Pour CHAQUE anime en base (pas seulement ceux déjà marqués) :
+      - Si son point de montage est indisponible (disque débranché) → on ignore,
+        on ne marque rien pour éviter les faux positifs.
+      - Si le dossier/fichier n'existe plus → status_on_disk = "missing"
+        (l'anime reste dans la base).
+      - Sinon → recalcule le vrai status disque (has_media / empty_shelves / empty).
+    """
+    all_animes = db.query(Anime).all()
+    missing_count = 0
+    restored_count = 0
+    refreshed_count = 0
+
+    for anime in all_animes:
+        if not anime.path:
+            continue
+
+        # Les animés externes (fromPc=False) ne sont pas sur le disque local
+        if anime.fromPc is False:
+            continue
+
+        if not is_mount_available(anime.path):
+            print(f"⚠️ Disque indisponible, ignoré : {anime.name} ({anime.path})")
+            continue
+
+        if not os.path.exists(anime.path):
+            if anime.status_on_disk != "missing":
+                anime.status_on_disk = "missing"
+                missing_count += 1
+                print(f"❌ Manquant : {anime.name} (dossier introuvable : {anime.path})")
+        else:
+            new_status = compute_anime_disk_status(anime.path)
+            if anime.status_on_disk == "missing":
+                restored_count += 1
+                print(f"✅ Restauré : {anime.name} (status: {new_status})")
+            elif anime.status_on_disk != new_status:
+                refreshed_count += 1
+                print(f"🔄 Rafraîchi : {anime.name} ({anime.status_on_disk} → {new_status})")
+            anime.status_on_disk = new_status
+
+    if missing_count or restored_count or refreshed_count:
+        print(f"📊 Résumé : {missing_count} manquant(s), {restored_count} restauré(s), {refreshed_count} rafraîchi(s)")
 
 
 def compute_anime_status(anime_path: str, db_episodes: list):

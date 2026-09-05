@@ -215,7 +215,7 @@ def get_watch_progress(payload: WatchProgressRequest, db: Session = Depends(get_
 
         season_progress.append({
             "season_watch_id": s.id,
-            "season_id": s.saison_id,
+            "season_id": s.season_id,
             "progress": progress,
             "watching_eps": watching_episode_ids
         })

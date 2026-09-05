@@ -12,6 +12,7 @@ from app.db.models.season import Season
 from datetime import datetime
 from app.crud.seasonal import is_seasonal_anime
 from app.db.models.seasonal_animes import SeasonalAnime
+from app.utils.http_client import request_with_retry
 
 logging.basicConfig(level=logging.INFO)
 
@@ -40,7 +41,7 @@ def translate_text(text: str, target_lang="fr") -> str:
 def get_anime_info_jikan(title: str) -> dict:
     url = f"https://api.jikan.moe/v4/anime?q={title}&limit=1"
     try:
-        r = requests.get(url, timeout=10)
+        r = request_with_retry("GET", url)
         r.raise_for_status()
 
         data = r.json().get("data", [])
@@ -110,10 +111,10 @@ def get_anime_info_anilist(title: str) -> dict:
     try:
         socket.gethostbyname("graphql.anilist.co")
 
-        r = requests.post(
+        r = request_with_retry(
+            "POST",
             ANILIST_GRAPHQL_URL,
             json={"query": query, "variables": {"search": title}},
-            timeout=10
         )
         r.raise_for_status()
 
@@ -163,10 +164,10 @@ def get_anilist_airing_schedule(title: str) -> dict:
     """
 
     try:
-        r = requests.post(
+        r = request_with_retry(
+            "POST",
             ANILIST_GRAPHQL_URL,
             json={"query": query, "variables": {"search": title}},
-            timeout=10
         )
         r.raise_for_status()
 
@@ -222,11 +223,11 @@ def get_anilist_seasonal_info(title: str) -> dict:
 
     try:
         headers = {"Content-Type": "application/json"}
-        r = requests.post(
+        r = request_with_retry(
+            "POST",
             ANILIST_GRAPHQL_URL,
             json={"query": query, "variables": {"search": clean}},
             headers=headers,
-            timeout=10
         )
         r.raise_for_status()
 
@@ -336,10 +337,11 @@ def get_episode_count_from_anilist(title: str, default=24) -> int:
     }
     """
     try:
-        r = requests.post(
+        r = request_with_retry(
+            "POST",
             ANILIST_GRAPHQL_URL,
             json={"query": query, "variables": {"search": title}},
-            timeout=8
+            timeout=8,
         )
         r.raise_for_status()
 

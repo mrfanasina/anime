@@ -1,7 +1,7 @@
 import React from "react";
 import noImageDark from "../assets/no-image-dark.png";
 import noImageLight from "../assets/no-image-light.png";
-import { Play, BookmarkPlus, Star, Trophy, Layers, Building2 } from "lucide-react";
+import { Play, BookmarkPlus, Star, Trophy, Layers, Building2, AlertTriangle } from "lucide-react";
 import { useSelector } from "react-redux";
 
 /* ─── Status config ─────────────────────────────────────────────── */
@@ -97,7 +97,11 @@ export default function AnimeCard({
         style={{
           aspectRatio: "225 / 338",
           backgroundColor: isDark ? "#18181f" : "#e8e8f0",
-          boxShadow: isDark ? "0 4px 20px rgba(0,0,0,0.5)" : "0 4px 16px rgba(0,0,0,0.12)",
+          boxShadow: anime.status_on_disk === "missing"
+            ? isDark
+              ? "0 4px 20px rgba(220,38,38,0.35), inset 0 0 0 2px rgba(220,38,38,0.5)"
+              : "0 4px 16px rgba(220,38,38,0.25), inset 0 0 0 2px rgba(220,38,38,0.4)"
+            : isDark ? "0 4px 20px rgba(0,0,0,0.5)" : "0 4px 16px rgba(0,0,0,0.12)",
           transition: "box-shadow 0.3s ease, transform 0.3s ease",
           
         }}
@@ -116,8 +120,18 @@ export default function AnimeCard({
           src={hasImage ? anime.image_url : fallback}
           alt={anime.name}
           loading="lazy"
-          className={`c-img w-full h-full object-cover ${ anime.status_on_disk === "empty" ? "grayscale opacity-90" : ""} `}
+          className={`c-img w-full h-full object-cover ${ anime.status_on_disk === "empty" || anime.status_on_disk === "missing" ? "grayscale opacity-90" : ""} `}
         />
+
+        {/* Badge "Disque manquant" — visible sans hover */}
+        {anime.status_on_disk === "missing" && (
+          <div
+            className="absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-black backdrop-blur-sm"
+            style={{ background: "rgba(220,38,38,0.88)", color: "#fff", border: "1px solid rgba(239,68,68,0.6)", boxShadow: "0 2px 12px rgba(220,38,38,0.4)" }}
+          >
+            <AlertTriangle size={10} /> Disque manquant
+          </div>
+        )}
 
         {/* Accent bar gauche */}
         <div

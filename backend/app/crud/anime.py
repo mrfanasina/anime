@@ -1,6 +1,6 @@
 """Opérations CRUD pour les animés, saisons et épisodes."""
 import os
-import datetime as dt
+import datetime
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy import func, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -301,6 +301,9 @@ def get_or_create_anime(
             updated = True
         if anime.type != type:
             anime.type = type
+            updated = True
+        if anime.status_on_disk != status_on_disk:
+            anime.status_on_disk = status_on_disk
             updated = True
         if updated:
             db.commit()

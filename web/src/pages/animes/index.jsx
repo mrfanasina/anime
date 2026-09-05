@@ -10,7 +10,7 @@ import { getCurrentUser } from "../../controllers/auth";
 import AddAnime from "../../components/AddAnime";
 import { getAllAnimes } from "../../controllers/anime";
 import { motion } from "framer-motion";
-import { Tv, Film, LayoutGrid, Sparkles, Eye, EyeOff } from "lucide-react";
+import { Tv, Film, LayoutGrid, Sparkles, Eye, EyeOff, AlertTriangle } from "lucide-react";
 
 /* ─── Type tab config ───────────────────────────────────────────── */
 const TYPE_TABS = [
@@ -45,6 +45,7 @@ const AnimePage = () => {
 
   // garde ton filtre important
   const [hideEmpty, setHideEmpty] = useState(true);
+  const [hideMissing, setHideMissing] = useState(false);
 
   const navigate = useNavigate();
   const { mode, primaryColors } = useSelector((state) => state.theme);
@@ -101,9 +102,13 @@ const AnimePage = () => {
   };
 
   /* ─── filtre final ────────────────────────────────────── */
-  const filteredAnimes = hideEmpty
-    ? animes.filter((a) => !( a.status_on_disk === "empty"))
-    : animes;
+  let filteredAnimes = animes;
+  if (hideEmpty) {
+    filteredAnimes = filteredAnimes.filter((a) => a.status_on_disk !== "empty");
+  }
+  if (hideMissing) {
+    filteredAnimes = filteredAnimes.filter((a) => a.status_on_disk !== "missing");
+  }
 
   const resultCount = filteredAnimes.length;
 
@@ -166,41 +171,75 @@ const AnimePage = () => {
             )}
           </div>
 
-          <button
-            onClick={() => setHideEmpty(!hideEmpty)}
-            className={`
-              relative overflow-hidden px-5 py-3 rounded-2xl
-              flex items-center gap-3 transition-all duration-300 ease-out
-              active:scale-95 group
-              ${hideEmpty ? 'shadow-[0_0_20px_-5px_rgba(var(--primary-rgb),0.4)]' : 'shadow-lg'}
-            `}
-            style={{
-              background: hideEmpty 
-                ? `linear-gradient(135deg, ${primaryMain}15, ${primaryMain}30)` 
-                : `linear-gradient(135deg, ${theme.surface}80, ${theme.surface})`,
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
-              border: `1px solid ${hideEmpty ? primaryMain : `${theme.border}40`}`,
-              color: hideEmpty ? primaryMain : theme.text,
-            }}
-          >
-            {/* Effet de reflet interne (Inner Glow) */}
-            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none" />
+          <div className="flex gap-2">
+            {/* Bouton Masquer les vides */}
+            <button
+              onClick={() => setHideEmpty(!hideEmpty)}
+              className={`
+                relative overflow-hidden px-4 py-3 rounded-2xl
+                flex items-center gap-2 transition-all duration-300 ease-out
+                active:scale-95 group
+              `}
+              style={{
+                background: hideEmpty 
+                  ? `linear-gradient(135deg, ${primaryMain}15, ${primaryMain}30)` 
+                  : `linear-gradient(135deg, ${theme.surface}80, ${theme.surface})`,
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                border: `1px solid ${hideEmpty ? primaryMain : `${theme.border}40`}`,
+                color: hideEmpty ? primaryMain : theme.text,
+              }}
+            >
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none" />
+              <div className="relative flex items-center gap-2 font-medium tracking-wide">
+                {hideEmpty ? (
+                  <>
+                    <EyeOff size={17} className="animate-pulse" />
+                    <span className="text-xs uppercase tracking-wider font-bold">Vides</span>
+                  </>
+                ) : (
+                  <>
+                    <Eye size={17} className="group-hover:rotate-12 transition-transform" />
+                    <span className="text-xs uppercase tracking-wider opacity-80">Vides</span>
+                  </>
+                )}
+              </div>
+            </button>
 
-            <div className="relative flex items-center gap-3 font-medium tracking-wide">
-              {hideEmpty ? (
-                <>
-                  <EyeOff size={20} className="animate-pulse" />
-                  <span className="text-sm uppercase tracking-wider font-bold">Masqué</span>
-                </>
-              ) : (
-                <>
-                  <Eye size={20} className="group-hover:rotate-12 transition-transform" />
-                  <span className="text-sm uppercase tracking-wider opacity-80">Tout voir</span>
-                </>
-              )}
-            </div>
-          </button>
+            {/* Bouton Masquer les supprimés du disque */}
+            <button
+              onClick={() => setHideMissing(!hideMissing)}
+              className={`
+                relative overflow-hidden px-4 py-3 rounded-2xl
+                flex items-center gap-2 transition-all duration-300 ease-out
+                active:scale-95 group
+              `}
+              style={{
+                background: hideMissing 
+                  ? `linear-gradient(135deg, rgba(220,38,38,0.1), rgba(220,38,38,0.2))` 
+                  : `linear-gradient(135deg, ${theme.surface}80, ${theme.surface})`,
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                border: `1px solid ${hideMissing ? '#dc2626' : `${theme.border}40`}`,
+                color: hideMissing ? '#dc2626' : theme.text,
+              }}
+            >
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none" />
+              <div className="relative flex items-center gap-2 font-medium tracking-wide">
+                {hideMissing ? (
+                  <>
+                    <AlertTriangle size={17} className="animate-pulse" />
+                    <span className="text-xs uppercase tracking-wider font-bold">Supprimés</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle size={17} className="group-hover:rotate-12 transition-transform" />
+                    <span className="text-xs uppercase tracking-wider opacity-80">Supprimés</span>
+                  </>
+                )}
+              </div>
+            </button>
+          </div>
         </div>
 
         {/* ── TYPE TABS ── */}
